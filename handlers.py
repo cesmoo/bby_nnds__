@@ -707,6 +707,7 @@ async def check_cookie_status(message: types.Message):
         else: await loading_msg.edit_text("🔴 Exᴘɪʀᴇᴅ", parse_mode=ParseMode.HTML)
     except Exception as e: await loading_msg.edit_text(f"❌ Error checking cookie: {str(e)}")
 
+
 @dp.message(or_f(Command("role"), F.text.regexp(r"(?i)^\.role(?:$|\s+)")))
 async def handle_check_role(message: types.Message):
 
@@ -715,58 +716,61 @@ async def handle_check_role(message: types.Message):
     if not match: return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
     
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
-    loading_msg = await message.reply("Checking region", parse_mode=ParseMode.HTML)
+    loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
 
-    url = 'https://coldofficialstore.com/api/name-checker/mlbb'
-    params = {
-        'user_id': game_id,
-        'server_id': zone_id,
+    url_region = 'https://yanjiestore.com/api/cekregion'
+    url_doubledm = 'https://yanjiestore.com/api/cekdoubledm'
+    
+    # API တော်တော်များများက id နဲ့ server ကို သုံးလေ့ရှိပါတယ်
+    payload = {
+        'id': game_id,
+        'server': zone_id
     }
     
     headers = {
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Pragma': 'no-cache',
-        'Referer': 'https://coldofficialstore.com/name-checker',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Accept': 'application/json'
     }
 
     try:
-        async with AsyncSession(impersonate="chrome120") as local_scraper:
-            res = await local_scraper.get(url, params=params, headers=headers, timeout=15)
+        # Region API နဲ့ Double DM API ကို တစ်ပြိုင်နက်တည်း အမြန်လှမ်းခေါ်ခြင်း
+        async with AsyncSession(impersonate="safari_ios") as local_scraper:
+            res_region, res_double = await asyncio.gather(
+                local_scraper.post(url_region, data=payload, headers=headers, timeout=15),
+                local_scraper.post(url_doubledm, data=payload, headers=headers, timeout=15)
+            )
         
         try:
-            data = res.json()
+            data_region = res_region.json()
+            data_double = res_double.json()
         except Exception:
-            return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res.text[:100]}...</code>", parse_mode=ParseMode.HTML)
+            return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res_region.text[:50]}...</code>", parse_mode=ParseMode.HTML)
 
-        user_data = data.get('data', {})
-        ig_name = user_data.get('username', 'Unknown')
-        
-        if not ig_name or str(ig_name).strip() == "" or ig_name == 'Unknown':
-            return await loading_msg.edit_text("❌ **Invalid Account:** Game ID or Zone ID is incorrect or not found.", parse_mode=ParseMode.HTML)
+        # အကောင့်အမှားစစ်ဆေးခြင်း
+        if not data_region.get('status') and not data_double.get('status'):
+             return await loading_msg.edit_text("❌ **Invalid Account:** Game ID or Zone ID is incorrect or not found.", parse_mode=ParseMode.HTML)
+
+        ig_name = data_region.get('nickname') or data_double.get('nickname') or 'Unknown'
             
-        country_code = user_data.get('country', 'Unknown')
+        country_code = data_region.get('region', 'Unknown')
         country_map = {"MM": "Myanmar", "FR": "France", "MY": "Malaysia", "PH": "Philippines", "ID": "Indonesia", "BR": "Brazil", "SG": "Singapore", "KH": "Cambodia", "TH": "Thailand"}
         final_region = country_map.get(str(country_code).upper(), country_code)
 
+        # Bonus limit ကို Default အနေနဲ့ True (Reached limit / Unavailable) ထားမယ်
         limit_50 = limit_150 = limit_250 = limit_500 = True 
         
-        bonus_limits = data.get('data2', {}).get('bonus_limit', [])
+        bonus_limits = data_double.get('rechargeBonus', [])
         for item in bonus_limits:
-            title = str(item.get('title', ''))
-            reached_limit = item.get('reached_limit', True) 
+            title = str(item.get('title', '')).lower()
+            # Status က 'Available' ဖြစ်နေမှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်မယ်
+            is_unavailable = (str(item.get('status', '')).lower() != 'available')
             
-            if "50+50" in title: limit_50 = reached_limit
-            elif "150+150" in title: limit_150 = reached_limit
-            elif "250+250" in title: limit_250 = reached_limit
-            elif "500+500" in title: limit_500 = reached_limit
+            if "50+50" in title: limit_50 = is_unavailable
+            elif "150+150" in title: limit_150 = is_unavailable
+            elif "250+250" in title: limit_250 = is_unavailable
+            elif "500+500" in title: limit_500 = is_unavailable
 
+        # Keyboard style က မူလ Code ထဲကအတိုင်းပဲ သုံးထားပါတယ်
         style_50 = "danger" if limit_50 else "success"
         style_150 = "danger" if limit_150 else "success"
         style_250 = "danger" if limit_250 else "success"
@@ -795,6 +799,7 @@ async def handle_check_role(message: types.Message):
         await loading_msg.edit_text(final_report, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except Exception as e: 
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
+
 
 @dp.message(or_f(Command("checkcus"), Command("cus"), F.text.regexp(r"(?i)^\.(?:checkcus|cus)(?:$|\s+)")))
 async def check_official_customer(message: types.Message):
