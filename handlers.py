@@ -723,8 +723,8 @@ async def handle_check_role(message: types.Message):
     
     # API တော်တော်များများက id နဲ့ server ကို သုံးလေ့ရှိပါတယ်
     payload = {
-        'id': game_id,
-        'server': zone_id
+        'id': int(game_id),
+        'server': int(zone_id)
     }
     
     headers = {
@@ -736,8 +736,8 @@ async def handle_check_role(message: types.Message):
         # Region API နဲ့ Double DM API ကို တစ်ပြိုင်နက်တည်း အမြန်လှမ်းခေါ်ခြင်း
         async with AsyncSession(impersonate="safari_ios") as local_scraper:
             res_region, res_double = await asyncio.gather(
-                local_scraper.post(url_region, data=payload, headers=headers, timeout=15),
-                local_scraper.post(url_doubledm, data=payload, headers=headers, timeout=15)
+                local_scraper.post(url_region, json=payload, headers=headers, timeout=15),
+                local_scraper.post(url_doubledm, json=payload, headers=headers, timeout=15)
             )
         
         try:
