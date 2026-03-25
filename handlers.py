@@ -722,9 +722,10 @@ async def handle_check_role(message: types.Message):
     url_doubledm = 'https://yanjiestore.com/check-region-mlbb'
     
     # API တော်တော်များများက id နဲ့ server ကို သုံးလေ့ရှိပါတယ်
+    # payload မှာ id နဲ့ server လို့ပဲ ထားပါ
     payload = {
-        'id': int(game_id),
-        'server': int(zone_id)
+        'id': game_id,
+        'server': zone_id
     }
     
     headers = {
@@ -733,11 +734,11 @@ async def handle_check_role(message: types.Message):
     }
 
     try:
-        # Region API နဲ့ Double DM API ကို တစ်ပြိုင်နက်တည်း အမြန်လှမ်းခေါ်ခြင်း
         async with AsyncSession(impersonate="safari_ios") as local_scraper:
             res_region, res_double = await asyncio.gather(
-                local_scraper.post(url_region, json=payload, headers=headers, timeout=15),
-                local_scraper.post(url_doubledm, json=payload, headers=headers, timeout=15)
+                # ⚠️ ဤနေရာတွင် json= အစား data= ကို မဖြစ်မနေ ပြန်သုံးပေးပါ
+                local_scraper.post(url_region, data=payload, headers=headers, timeout=15),
+                local_scraper.post(url_doubledm, data=payload, headers=headers, timeout=15)
             )
         
         try:
@@ -746,11 +747,10 @@ async def handle_check_role(message: types.Message):
         except Exception:
             return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res_region.text[:50]}...</code>", parse_mode=ParseMode.HTML)
 
-        # အကောင့်အမှားစစ်ဆေးခြင်း
+        # API မှ status: false ပြန်လာပါက Error Message အတိအကျကို ပြပေးရန်
         if not data_region.get('status') and not data_double.get('status'):
-             # API ကပေးတဲ့ အမှားစာသားကို ဖမ်းယူခြင်း
-             error_msg = data_region.get('msg') or data_region.get('message') or str(data_region)
-             return await loading_msg.edit_text(f"❌ **API မှ လက်မခံပါ:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
+             error_msg = data_region.get('msg') or data_region.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
+             return await loading_msg.edit_text(f"❌ **API ဖြေကြားချက်:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
 
         ig_name = data_region.get('nickname') or data_double.get('nickname') or 'Unknown'
             
