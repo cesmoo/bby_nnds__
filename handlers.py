@@ -718,8 +718,8 @@ async def handle_check_role(message: types.Message):
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
     loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
 
-    url_region = 'https://yanjiestore.com/api/cekregion'
-    url_doubledm = 'https://yanjiestore.com/api/cekdoubledm'
+    url_region = 'https://yanjiestore.com/check-region-mlbb'
+    url_doubledm = 'https://yanjiestore.com/check-region-mlbb'
     
     # API တော်တော်များများက id နဲ့ server ကို သုံးလေ့ရှိပါတယ်
     payload = {
