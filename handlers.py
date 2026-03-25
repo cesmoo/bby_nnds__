@@ -748,7 +748,9 @@ async def handle_check_role(message: types.Message):
 
         # အကောင့်အမှားစစ်ဆေးခြင်း
         if not data_region.get('status') and not data_double.get('status'):
-             return await loading_msg.edit_text("❌ **Invalid Account:** Game ID or Zone ID is incorrect or not found.", parse_mode=ParseMode.HTML)
+             # API ကပေးတဲ့ အမှားစာသားကို ဖမ်းယူခြင်း
+             error_msg = data_region.get('msg') or data_region.get('message') or str(data_region)
+             return await loading_msg.edit_text(f"❌ **API မှ လက်မခံပါ:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
 
         ig_name = data_region.get('nickname') or data_double.get('nickname') or 'Unknown'
             
