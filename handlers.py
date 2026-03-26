@@ -8,7 +8,7 @@ import html
 import json
 
 from bs4 import BeautifulSoup
-from bby_nnds import get_random_proxy
+#from bby_nnds import get_random_proxy
 from aiogram import F, types
 from aiogram.filters import Command, or_f
 from aiogram.enums import ParseMode
@@ -737,11 +737,13 @@ async def handle_check_role(message: types.Message):
     }
 
     try:
-        proxy_dict = get_random_proxy() # Proxy လှမ်းယူမယ်
+        #proxy_dict = get_random_proxy() # Proxy လှမ်းယူမယ်
         
         # ⚠️ ဤနေရာတွင် proxies=proxy_dict ကို ပေါင်းထည့်လိုက်ပါ
-        async with AsyncSession(impersonate="safari_ios", proxies=proxy_dict) as local_scraper:
-            res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
+        #async with AsyncSession(impersonate="safari_ios", proxies=proxy_dict) as local_scraper:
+            #res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
+         async with AsyncSession(impersonate="chrome124") as local_scraper:
+            res = await local_scraper.get(url, params=params, headers=headers, timeout=15)
         
         try:
             data = res.json()
