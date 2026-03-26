@@ -10,7 +10,7 @@ from curl_cffi.requests import AsyncSession
 import database as db
 from config import GOOGLE_EMAIL, GOOGLE_PASS, auth_lock
 from helpers import notify_owner
-from config import WEBSHARE_PROXIES
+#from config import WEBSHARE_PROXIES
 
 # Scraper Globals (Managed here to avoid circular imports)
 last_login_time = 0
@@ -18,38 +18,7 @@ GLOBAL_SCRAPER = None
 GLOBAL_COOKIE_STR = ""
 GLOBAL_CSRF = {'mlbb_br': None, 'mlbb_ph': None, 'mcc_br': None, 'mcc_ph': None}
 
-def get_random_proxy():
-    if WEBSHARE_PROXIES:
-        proxy_url = random.choice(WEBSHARE_PROXIES)
-        return {"http": proxy_url, "https": proxy_url}
-    return None
 
-async def get_main_scraper():
-    global GLOBAL_SCRAPER, GLOBAL_COOKIE_STR, GLOBAL_CSRF
-    
-    raw_cookie = await db.get_main_cookie() or ""
-    
-    if GLOBAL_SCRAPER is None or raw_cookie != GLOBAL_COOKIE_STR:
-        cookie_dict = {}
-        if raw_cookie:
-            for item in raw_cookie.split(';'):
-                if '=' in item:
-                    k, v = item.strip().split('=', 1)
-                    cookie_dict[k.strip()] = v.strip()
-        
-        # Proxy ကို ယူပါမည်
-        proxy_dict = get_random_proxy()
-            
-        # ⚠️ သတိပြုရန်: ဤနေရာတွင် proxies=proxy_dict ကို ထပ်ပေါင်းထည့်လိုက်ပါ
-        GLOBAL_SCRAPER = AsyncSession(
-            impersonate="safari_ios", 
-            cookies=cookie_dict,
-            proxies=proxy_dict
-        )
-        GLOBAL_COOKIE_STR = raw_cookie
-        GLOBAL_CSRF = {'mlbb_br': None, 'mlbb_ph': None, 'mcc_br': None, 'mcc_ph': None}
-        
-    return GLOBAL_SCRAPER
 
 async def get_main_scraper():
     global GLOBAL_SCRAPER, GLOBAL_COOKIE_STR, GLOBAL_CSRF
@@ -64,7 +33,7 @@ async def get_main_scraper():
                     k, v = item.strip().split('=', 1)
                     cookie_dict[k.strip()] = v.strip()
                     
-        GLOBAL_SCRAPER = AsyncSession(impersonate="safari_ios", cookies=cookie_dict)
+        GLOBAL_SCRAPER = AsyncSession(impersonate="chrome124", cookies=cookie_dict)
         GLOBAL_COOKIE_STR = raw_cookie
         GLOBAL_CSRF = {'mlbb_br': None, 'mlbb_ph': None, 'mcc_br': None, 'mcc_ph': None}
         
