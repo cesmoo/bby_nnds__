@@ -718,13 +718,12 @@ async def handle_check_role(message: types.Message):
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
     loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
 
-    url_region = 'https://yanjiestore.com/check-region-mlbb'
-    url_doubledm = 'https://yanjiestore.com/check-region-mlbb'
+    # ⚠️ သင့်ရဲ့ API အသစ် Link ကို ဒီနေရာမှာ အစားထိုးထည့်ပေးပါ
+    api_url = 'https://yanjiestore.com/index.php/check-region-mlbb'
     
-    # API တော်တော်များများက id နဲ့ server ကို သုံးလေ့ရှိပါတယ်
-    # payload မှာ id နဲ့ server လို့ပဲ ထားပါ
+    # API တောင်းတဲ့ပုံစံပေါ်မူတည်ပြီး 'id' (သို့) 'uid' ပြောင်းသုံးနိုင်ပါတယ်
     payload = {
-        'id': game_id,
+        'uid': game_id,
         'server': zone_id
     }
     
@@ -734,37 +733,34 @@ async def handle_check_role(message: types.Message):
     }
 
     try:
+        # API တစ်ခုတည်းကိုသာ လှမ်းခေါ်တော့မည်ဖြစ်၍ ပိုမြန်ဆန်သွားပါမည်
         async with AsyncSession(impersonate="safari_ios") as local_scraper:
-            res_region, res_double = await asyncio.gather(
-                # ⚠️ ဤနေရာတွင် json= အစား data= ကို မဖြစ်မနေ ပြန်သုံးပေးပါ
-                local_scraper.post(url_region, data=payload, headers=headers, timeout=15),
-                local_scraper.post(url_doubledm, data=payload, headers=headers, timeout=15)
-            )
+            res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
         
         try:
-            data_region = res_region.json()
-            data_double = res_double.json()
+            data = res.json()
         except Exception:
-            return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res_region.text[:50]}...</code>", parse_mode=ParseMode.HTML)
+            return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res.text[:100]}...</code>", parse_mode=ParseMode.HTML)
 
-        # API မှ status: false ပြန်လာပါက Error Message အတိအကျကို ပြပေးရန်
-        if not data_region.get('status') and not data_double.get('status'):
-             error_msg = data_region.get('msg') or data_region.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
-             return await loading_msg.edit_text(f"❌ **API ဖြေကြားချက်:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
+        # Status ကို စစ်ဆေးခြင်း
+        if not data.get('status'):
+             error_msg = data.get('msg') or data.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
+             return await loading_msg.edit_text(f"❌ **Invalid Account:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
 
-        ig_name = data_region.get('nickname') or data_double.get('nickname') or 'Unknown'
+        # JSON အသစ်ပုံစံအရ 'data' အခန်းထဲမှ အချက်အလက်များကို ဆွဲထုတ်ခြင်း
+        user_data = data.get('data', {})
+        ig_name = user_data.get('nick', 'Unknown')
+        country_code = user_data.get('region', 'Unknown')
             
-        country_code = data_region.get('region', 'Unknown')
         country_map = {"MM": "Myanmar", "FR": "France", "MY": "Malaysia", "PH": "Philippines", "ID": "Indonesia", "BR": "Brazil", "SG": "Singapore", "KH": "Cambodia", "TH": "Thailand"}
         final_region = country_map.get(str(country_code).upper(), country_code)
 
-        # Bonus limit ကို Default အနေနဲ့ True (Reached limit / Unavailable) ထားမယ်
         limit_50 = limit_150 = limit_250 = limit_500 = True 
         
-        bonus_limits = data_double.get('rechargeBonus', [])
+        bonus_limits = user_data.get('rechargeBonus', [])
         for item in bonus_limits:
             title = str(item.get('title', '')).lower()
-            # Status က 'Available' ဖြစ်နေမှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်မယ်
+            # Status က 'Available' ဖြစ်မှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်ပါမယ်
             is_unavailable = (str(item.get('status', '')).lower() != 'available')
             
             if "50+50" in title: limit_50 = is_unavailable
@@ -772,7 +768,6 @@ async def handle_check_role(message: types.Message):
             elif "250+250" in title: limit_250 = is_unavailable
             elif "500+500" in title: limit_500 = is_unavailable
 
-        # Keyboard style က မူလ Code ထဲကအတိုင်းပဲ သုံးထားပါတယ်
         style_50 = "danger" if limit_50 else "success"
         style_150 = "danger" if limit_150 else "success"
         style_250 = "danger" if limit_250 else "success"
