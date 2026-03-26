@@ -711,9 +711,12 @@ async def check_cookie_status(message: types.Message):
 @dp.message(or_f(Command("role"), F.text.regexp(r"(?i)^\.role(?:$|\s+)")))
 async def handle_check_role(message: types.Message):
 
-    if not await is_authorized(message.from_user.id): return await message.reply("ɴᴏᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀ.")
+    if not await is_authorized(message.from_user.id):
+        return await message.reply("ɴᴏᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀ.")
+    
     match = re.search(r"(?i)^[./]?role\s+(\d+)\s*[\(]?\s*(\d+)\s*[\)]?", message.text.strip())
-    if not match: return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
+    if not match:
+        return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
     
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
     loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
@@ -740,19 +743,178 @@ async def handle_check_role(message: types.Message):
         try:
             data = res.json()
         except Exception:
-            return await loading_msg.edit_text(f"❌ API Error: Invalid Response.\n\n<code>{res.text[:100]}...</code>", parse_mode=ParseMode.HTML)
+            return await loading_msg.edit_text(
+                f"❌ API Error: Invalid Response.\n\n<code>{res.text[:100]}...</code>",
+                parse_mode=ParseMode.HTML
+            )
 
         # Status ကို စစ်ဆေးခြင်း
         if not data.get('status'):
-             error_msg = data.get('msg') or data.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
-             return await loading_msg.edit_text(f"❌ **Invalid Account:** <code>{error_msg}</code>", parse_mode=ParseMode.HTML)
+            error_msg = data.get('msg') or data.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
+            return await loading_msg.edit_text(
+                f"❌ **Invalid Account:** <code>{error_msg}</code>",
+                parse_mode=ParseMode.HTML
+            )
 
         # JSON အသစ်ပုံစံအရ 'data' အခန်းထဲမှ အချက်အလက်များကို ဆွဲထုတ်ခြင်း
         user_data = data.get('data', {})
         ig_name = user_data.get('nick', 'Unknown')
         country_code = user_data.get('region', 'Unknown')
-            
-        country_map = {"MM": "Myanmar", "FR": "France", "MY": "Malaysia", "PH": "Philippines", "ID": "Indonesia", "BR": "Brazil", "SG": "Singapore", "KH": "Cambodia", "TH": "Thailand"}
+        
+        country_map = {
+            # Asia
+            "MM": "Myanmar",
+            "MY": "Malaysia",
+            "PH": "Philippines",
+            "ID": "Indonesia",
+            "SG": "Singapore",
+            "KH": "Cambodia",
+            "TH": "Thailand",
+            "JP": "Japan",
+            "KR": "South Korea",
+            "CN": "China",
+            "TW": "Taiwan",
+            "HK": "Hong Kong",
+            "VN": "Vietnam",
+            "LA": "Laos",
+            "BN": "Brunei",
+            "TL": "Timor-Leste",
+            "IN": "India",
+            "PK": "Pakistan",
+            "BD": "Bangladesh",
+            "LK": "Sri Lanka",
+            "NP": "Nepal",
+            "BT": "Bhutan",
+            "MV": "Maldives",
+            "AF": "Afghanistan",
+            "IR": "Iran",
+            "IQ": "Iraq",
+            "SA": "Saudi Arabia",
+            "AE": "United Arab Emirates",
+            "QA": "Qatar",
+            "KW": "Kuwait",
+            "OM": "Oman",
+            "YE": "Yemen",
+            "JO": "Jordan",
+            "LB": "Lebanon",
+            "IL": "Israel",
+            "SY": "Syria",
+            "TR": "Turkey",
+            "AZ": "Azerbaijan",
+            "GE": "Georgia",
+            "AM": "Armenia",
+            "KZ": "Kazakhstan",
+            "UZ": "Uzbekistan",
+            "TM": "Turkmenistan",
+            "KG": "Kyrgyzstan",
+            "TJ": "Tajikistan",
+            "MN": "Mongolia",
+            # Europe
+            "FR": "France",
+            "GB": "United Kingdom",
+            "DE": "Germany",
+            "IT": "Italy",
+            "ES": "Spain",
+            "PT": "Portugal",
+            "NL": "Netherlands",
+            "BE": "Belgium",
+            "LU": "Luxembourg",
+            "CH": "Switzerland",
+            "AT": "Austria",
+            "PL": "Poland",
+            "CZ": "Czech Republic",
+            "SK": "Slovakia",
+            "HU": "Hungary",
+            "RO": "Romania",
+            "BG": "Bulgaria",
+            "GR": "Greece",
+            "SE": "Sweden",
+            "NO": "Norway",
+            "FI": "Finland",
+            "DK": "Denmark",
+            "IS": "Iceland",
+            "IE": "Ireland",
+            "UA": "Ukraine",
+            "BY": "Belarus",
+            "LT": "Lithuania",
+            "LV": "Latvia",
+            "EE": "Estonia",
+            "HR": "Croatia",
+            "SI": "Slovenia",
+            "BA": "Bosnia and Herzegovina",
+            "RS": "Serbia",
+            "ME": "Montenegro",
+            "MK": "North Macedonia",
+            "AL": "Albania",
+            "MD": "Moldova",
+            # Americas
+            "BR": "Brazil",
+            "US": "United States",
+            "CA": "Canada",
+            "MX": "Mexico",
+            "AR": "Argentina",
+            "CL": "Chile",
+            "PE": "Peru",
+            "CO": "Colombia",
+            "VE": "Venezuela",
+            "EC": "Ecuador",
+            "BO": "Bolivia",
+            "PY": "Paraguay",
+            "UY": "Uruguay",
+            "GY": "Guyana",
+            "SR": "Suriname",
+            "PA": "Panama",
+            "CR": "Costa Rica",
+            "NI": "Nicaragua",
+            "HN": "Honduras",
+            "SV": "El Salvador",
+            "GT": "Guatemala",
+            "BZ": "Belize",
+            "CU": "Cuba",
+            "DO": "Dominican Republic",
+            "PR": "Puerto Rico",
+            "JM": "Jamaica",
+            "HT": "Haiti",
+            "BS": "Bahamas",
+            "TT": "Trinidad and Tobago",
+            # Africa
+            "ZA": "South Africa",
+            "EG": "Egypt",
+            "NG": "Nigeria",
+            "KE": "Kenya",
+            "TZ": "Tanzania",
+            "UG": "Uganda",
+            "RW": "Rwanda",
+            "ET": "Ethiopia",
+            "GH": "Ghana",
+            "SN": "Senegal",
+            "CI": "Ivory Coast",
+            "MA": "Morocco",
+            "TN": "Tunisia",
+            "DZ": "Algeria",
+            "LY": "Libya",
+            "SD": "Sudan",
+            "SS": "South Sudan",
+            "ZM": "Zambia",
+            "ZW": "Zimbabwe",
+            "MW": "Malawi",
+            "MZ": "Mozambique",
+            "AO": "Angola",
+            "NA": "Namibia",
+            "BW": "Botswana",
+            "MG": "Madagascar",
+            "MU": "Mauritius",
+            # Oceania
+            "AU": "Australia",
+            "NZ": "New Zealand",
+            "FJ": "Fiji",
+            "PG": "Papua New Guinea",
+            "SB": "Solomon Islands",
+            "VU": "Vanuatu",
+            "WS": "Samoa",
+            "TO": "Tonga"
+        }
+        
         final_region = country_map.get(str(country_code).upper(), country_code)
 
         limit_50 = limit_150 = limit_250 = limit_500 = True 
@@ -763,10 +925,14 @@ async def handle_check_role(message: types.Message):
             # Status က 'Available' ဖြစ်မှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်ပါမယ်
             is_unavailable = (str(item.get('status', '')).lower() != 'available')
             
-            if "50+50" in title: limit_50 = is_unavailable
-            elif "150+150" in title: limit_150 = is_unavailable
-            elif "250+250" in title: limit_250 = is_unavailable
-            elif "500+500" in title: limit_500 = is_unavailable
+            if "50+50" in title:
+                limit_50 = is_unavailable
+            elif "150+150" in title:
+                limit_150 = is_unavailable
+            elif "250+250" in title:
+                limit_250 = is_unavailable
+            elif "500+500" in title:
+                limit_500 = is_unavailable
 
         style_50 = "danger" if limit_50 else "success"
         style_150 = "danger" if limit_150 else "success"
@@ -794,7 +960,8 @@ async def handle_check_role(message: types.Message):
         )
 
         await loading_msg.edit_text(final_report, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    except Exception as e: 
+        
+    except Exception as e:
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
 
 
