@@ -738,8 +738,11 @@ async def handle_check_role(message: types.Message):
     }
 
     try:
-        async with AsyncSession(impersonate="chrome124") as local_scraper:
-            res = await local_scraper.get(api_url, params=params, headers=headers, timeout=15)
+        proxy_dict = get_random_proxy() # Proxy လှမ်းယူမယ်
+        
+        # ⚠️ ဤနေရာတွင် proxies=proxy_dict ကို ပေါင်းထည့်လိုက်ပါ
+        async with AsyncSession(impersonate="chrome124", proxies=proxy_dict) as local_scraper:
+            res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
         
         try:
             data = res.json()
