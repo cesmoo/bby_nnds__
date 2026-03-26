@@ -709,7 +709,6 @@ async def check_cookie_status(message: types.Message):
     except Exception as e: await loading_msg.edit_text(f"❌ Error checking cookie: {str(e)}")
 
 
-
 @dp.message(or_f(Command("role"), F.text.regexp(r"(?i)^\.role(?:$|\s+)")))
 async def handle_check_role(message: types.Message):
 
@@ -731,29 +730,37 @@ async def handle_check_role(message: types.Message):
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
         'Content-Type': 'application/x-www-form-urlencoded',
         'Origin': 'https://pizzoshop.com',
-        'Referer': 'https://pizzoshop.com/mlchecker/check'
+        'Referer': 'https://pizzoshop.com/mlchecker/check',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     }
 
     try:
-        proxy_dict = get_random_proxy() # Proxy လှမ်းယူမယ်
-        
-        # ⚠️ ဤနေရာတွင် proxies=proxy_dict ကို ပေါင်းထည့်လိုက်ပါ
-        async with AsyncSession(impersonate="chrome124", proxies=proxy_dict) as local_scraper:
+        # ⚠️ အရေးကြီး: PizzoShop သို့ Request ပို့ရာတွင် GET ဖြင့် Cookie အရင်ယူမည်
+        async with AsyncSession(impersonate="safari_ios") as local_scraper:
+            await local_scraper.get(url, headers=headers, timeout=15)
             res = await local_scraper.post(url, data=payload, headers=headers, timeout=15)
         
+        # BeautifulSoup ဖြင့် HTML ဒေတာထုတ်ယူမည်
+        from bs4 import BeautifulSoup
         soup = BeautifulSoup(res.text, 'html.parser')
         
         # HTML ထဲမှ table-modern ကို ရှာဖွေခြင်း
         table = soup.find('table', class_='table-modern')
         
         if not table:
-             return await loading_msg.edit_text("❌ **Invalid Account:** Game ID or Zone ID is incorrect or not found.", parse_mode=ParseMode.HTML)
+             # Cloudflare က ပိတ်ထားတာလား စစ်ဆေးရန်
+             if "just a moment" in res.text.lower() or "cloudflare" in res.text.lower():
+                 return await loading_msg.edit_text("❌ **Security Block:** PizzoShop ၏ Cloudflare လုံခြုံရေးမှ ယာယီပိတ်ထားပါသည်။", parse_mode=ParseMode.HTML)
+             
+             # ဘာမှားနေလဲ တိတိကျကျ သိရအောင် PizzoShop မှ ပြန်ပို့သော စာသားကို ပြပေးမည်
+             debug_msg = res.text[:120].replace('<', '&lt;').replace('>', '&gt;').strip()
+             return await loading_msg.edit_text(f"❌ **Not Found or Error:**\n<code>{debug_msg}...</code>", parse_mode=ParseMode.HTML)
 
         ig_name = "Unknown"
         region = "Unknown"
         last_login = "Unknown"
 
-        # Table Row တစ်ခုချင်းစီကို လှည့်ပတ်ဖတ်ပြီး Data ထုတ်ယူခြင်း
+        # Table Row တစ်ခုချင်းစီကို ဖတ်ခြင်း
         rows = table.find_all('tr')
         for row in rows:
             th = row.find('th')
@@ -767,7 +774,6 @@ async def handle_check_role(message: types.Message):
                 elif 'last login' in th_text:
                     last_login = td.text.strip()
 
-        # Keyboard များမပါဝင်တော့ဘဲ Report သီးသန့်ထုတ်ပေးမည်
         final_report = (
             f"<u><b>Mᴏʙɪʟᴇ Lᴇɢᴇɴᴅs Bᴀɴɢ Bᴀɴɢ</b></u>\n\n"
             f"🆔 <code>{'User ID' :<9}:</code> <code>{game_id}</code> (<code>{zone_id}</code>)\n"
@@ -780,6 +786,7 @@ async def handle_check_role(message: types.Message):
         await loading_msg.edit_text(final_report, parse_mode=ParseMode.HTML)
     except Exception as e: 
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
+
 
 
 @dp.message(or_f(Command("checkcus"), Command("cus"), F.text.regexp(r"(?i)^\.(?:checkcus|cus)(?:$|\s+)")))
