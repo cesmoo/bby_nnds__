@@ -739,7 +739,7 @@ async def handle_check_role(message: types.Message):
         
         # ⚠️ ဤနေရာတွင် proxies=proxy_dict ကို ပေါင်းထည့်လိုက်ပါ
         async with AsyncSession(impersonate="chrome124", proxies=proxy_dict) as local_scraper:
-            res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
+            res = await local_scraper.post(url, data=payload, headers=headers, timeout=15)
         
         soup = BeautifulSoup(res.text, 'html.parser')
         
