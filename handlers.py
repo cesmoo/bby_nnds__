@@ -770,9 +770,11 @@ async def handle_check_role(message: types.Message):
                 if 'nickname' in th_text:
                     ig_name = td.text.strip()
                 elif 'region id' in th_text:
-                    region = td.text.strip()
+                    # ဤနေရာတွင် (the) နှင့် (The) ကို ဖျောက်ရန် replace ထည့်ပါ
+                    region = td.text.strip().replace(" (the)", "").replace(" (The)", "")
                 elif 'last login' in th_text:
-                    last_login = td.text.strip()
+                    # ဤနေရာတွင် (the) နှင့် (The) ကို ဖျောက်ရန် replace ထည့်ပါ
+                    last_login = td.text.strip().replace(" (the)", "").replace(" (The)", "")
 
         final_report = (
             f"<u><b>Mᴏʙɪʟᴇ Lᴇɢᴇɴᴅs Bᴀɴɢ Bᴀɴɢ</b></u>\n\n"
