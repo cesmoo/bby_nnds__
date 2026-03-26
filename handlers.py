@@ -726,7 +726,7 @@ async def handle_check_role(message: types.Message):
     
     # API တောင်းဆိုသည့် Payload (ယခင် Error မတက်စေရန် Form Data ပုံစံဖြင့်သာ ပို့ပါမည်)
     payload = {
-        'id': game_id,
+        'uid': game_id,
         'server': zone_id
     }
     
