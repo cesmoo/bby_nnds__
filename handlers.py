@@ -709,23 +709,19 @@ async def check_cookie_status(message: types.Message):
     except Exception as e: await loading_msg.edit_text(f"❌ Error checking cookie: {str(e)}")
 
 
+
 @dp.message(or_f(Command("role"), F.text.regexp(r"(?i)^\.role(?:$|\s+)")))
 async def handle_check_role(message: types.Message):
 
-    if not await is_authorized(message.from_user.id):
-        return await message.reply("ɴᴏᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀ.")
-    
+    if not await is_authorized(message.from_user.id): return await message.reply("ɴᴏᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀ.")
     match = re.search(r"(?i)^[./]?role\s+(\d+)\s*[\(]?\s*(\d+)\s*[\)]?", message.text.strip())
-    if not match:
-        return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
+    if not match: return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
     
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
-    loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
+    loading_msg = await message.reply("Checking account region...", parse_mode=ParseMode.HTML)
 
-    # ⚠️ သင့်ရဲ့ API အသစ် Link ကို ဒီနေရာမှာ အစားထိုးထည့်ပေးပါ
-    api_url = 'https://pizzoshop.com/mlchecker/check'
+    url = 'https://pizzoshop.com/mlchecker/check'
     
-    # API တောင်းတဲ့ပုံစံပေါ်မူတည်ပြီး 'id' (သို့) 'uid' ပြောင်းသုံးနိုင်ပါတယ်
     payload = {
         'user_id': game_id,
         'zone_id': zone_id
@@ -733,7 +729,9 @@ async def handle_check_role(message: types.Message):
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-        'Accept': 'application/json'
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://pizzoshop.com',
+        'Referer': 'https://pizzoshop.com/mlchecker/check'
     }
 
     try:
@@ -743,228 +741,44 @@ async def handle_check_role(message: types.Message):
         async with AsyncSession(impersonate="chrome124", proxies=proxy_dict) as local_scraper:
             res = await local_scraper.post(api_url, data=payload, headers=headers, timeout=15)
         
-        try:
-            data = res.json()
-        except Exception:
-            return await loading_msg.edit_text(
-                f"❌ API Error: Invalid Response.\n\n<code>{res.text[:100]}...</code>",
-                parse_mode=ParseMode.HTML
-            )
-
-        # Status ကို စစ်ဆေးခြင်း
-        if not data.get('status'):
-            error_msg = data.get('msg') or data.get('message') or "Game ID သို့မဟုတ် Zone ID မှားယွင်းနေပါသည်။"
-            return await loading_msg.edit_text(
-                f"❌ **Invalid Account:** <code>{error_msg}</code>",
-                parse_mode=ParseMode.HTML
-            )
-
-        # JSON အသစ်ပုံစံအရ 'data' အခန်းထဲမှ အချက်အလက်များကို ဆွဲထုတ်ခြင်း
-        user_data = data.get('data', {})
-        ig_name = user_data.get('nick', 'Unknown')
-        country_code = user_data.get('region', 'Unknown')
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        country_map = {
-            # Asia
-            "MM": "Myanmar",
-            "MY": "Malaysia",
-            "PH": "Philippines",
-            "ID": "Indonesia",
-            "SG": "Singapore",
-            "KH": "Cambodia",
-            "TH": "Thailand",
-            "JP": "Japan",
-            "KR": "South Korea",
-            "CN": "China",
-            "TW": "Taiwan",
-            "HK": "Hong Kong",
-            "VN": "Vietnam",
-            "LA": "Laos",
-            "BN": "Brunei",
-            "TL": "Timor-Leste",
-            "IN": "India",
-            "PK": "Pakistan",
-            "BD": "Bangladesh",
-            "LK": "Sri Lanka",
-            "NP": "Nepal",
-            "BT": "Bhutan",
-            "MV": "Maldives",
-            "AF": "Afghanistan",
-            "IR": "Iran",
-            "IQ": "Iraq",
-            "SA": "Saudi Arabia",
-            "AE": "United Arab Emirates",
-            "QA": "Qatar",
-            "KW": "Kuwait",
-            "OM": "Oman",
-            "YE": "Yemen",
-            "JO": "Jordan",
-            "LB": "Lebanon",
-            "IL": "Israel",
-            "SY": "Syria",
-            "TR": "Turkey",
-            "AZ": "Azerbaijan",
-            "GE": "Georgia",
-            "AM": "Armenia",
-            "KZ": "Kazakhstan",
-            "UZ": "Uzbekistan",
-            "TM": "Turkmenistan",
-            "KG": "Kyrgyzstan",
-            "TJ": "Tajikistan",
-            "MN": "Mongolia",
-            # Europe
-            "FR": "France",
-            "GB": "United Kingdom",
-            "DE": "Germany",
-            "IT": "Italy",
-            "ES": "Spain",
-            "PT": "Portugal",
-            "NL": "Netherlands",
-            "BE": "Belgium",
-            "LU": "Luxembourg",
-            "CH": "Switzerland",
-            "AT": "Austria",
-            "PL": "Poland",
-            "CZ": "Czech Republic",
-            "SK": "Slovakia",
-            "HU": "Hungary",
-            "RO": "Romania",
-            "BG": "Bulgaria",
-            "GR": "Greece",
-            "SE": "Sweden",
-            "NO": "Norway",
-            "FI": "Finland",
-            "DK": "Denmark",
-            "IS": "Iceland",
-            "IE": "Ireland",
-            "UA": "Ukraine",
-            "BY": "Belarus",
-            "LT": "Lithuania",
-            "LV": "Latvia",
-            "EE": "Estonia",
-            "HR": "Croatia",
-            "SI": "Slovenia",
-            "BA": "Bosnia and Herzegovina",
-            "RS": "Serbia",
-            "ME": "Montenegro",
-            "MK": "North Macedonia",
-            "AL": "Albania",
-            "MD": "Moldova",
-            # Americas
-            "BR": "Brazil",
-            "US": "United States",
-            "CA": "Canada",
-            "MX": "Mexico",
-            "AR": "Argentina",
-            "CL": "Chile",
-            "PE": "Peru",
-            "CO": "Colombia",
-            "VE": "Venezuela",
-            "EC": "Ecuador",
-            "BO": "Bolivia",
-            "PY": "Paraguay",
-            "UY": "Uruguay",
-            "GY": "Guyana",
-            "SR": "Suriname",
-            "PA": "Panama",
-            "CR": "Costa Rica",
-            "NI": "Nicaragua",
-            "HN": "Honduras",
-            "SV": "El Salvador",
-            "GT": "Guatemala",
-            "BZ": "Belize",
-            "CU": "Cuba",
-            "DO": "Dominican Republic",
-            "PR": "Puerto Rico",
-            "JM": "Jamaica",
-            "HT": "Haiti",
-            "BS": "Bahamas",
-            "TT": "Trinidad and Tobago",
-            # Africa
-            "ZA": "South Africa",
-            "EG": "Egypt",
-            "NG": "Nigeria",
-            "KE": "Kenya",
-            "TZ": "Tanzania",
-            "UG": "Uganda",
-            "RW": "Rwanda",
-            "ET": "Ethiopia",
-            "GH": "Ghana",
-            "SN": "Senegal",
-            "CI": "Ivory Coast",
-            "MA": "Morocco",
-            "TN": "Tunisia",
-            "DZ": "Algeria",
-            "LY": "Libya",
-            "SD": "Sudan",
-            "SS": "South Sudan",
-            "ZM": "Zambia",
-            "ZW": "Zimbabwe",
-            "MW": "Malawi",
-            "MZ": "Mozambique",
-            "AO": "Angola",
-            "NA": "Namibia",
-            "BW": "Botswana",
-            "MG": "Madagascar",
-            "MU": "Mauritius",
-            # Oceania
-            "AU": "Australia",
-            "NZ": "New Zealand",
-            "FJ": "Fiji",
-            "PG": "Papua New Guinea",
-            "SB": "Solomon Islands",
-            "VU": "Vanuatu",
-            "WS": "Samoa",
-            "TO": "Tonga"
-        }
+        # HTML ထဲမှ table-modern ကို ရှာဖွေခြင်း
+        table = soup.find('table', class_='table-modern')
         
-        final_region = country_map.get(str(country_code).upper(), country_code)
+        if not table:
+             return await loading_msg.edit_text("❌ **Invalid Account:** Game ID or Zone ID is incorrect or not found.", parse_mode=ParseMode.HTML)
 
-        limit_50 = limit_150 = limit_250 = limit_500 = True 
-        
-        bonus_limits = user_data.get('rechargeBonus', [])
-        for item in bonus_limits:
-            title = str(item.get('title', '')).lower()
-            # Status က 'Available' ဖြစ်မှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်ပါမယ်
-            is_unavailable = (str(item.get('status', '')).lower() != 'available')
-            
-            if "50+50" in title:
-                limit_50 = is_unavailable
-            elif "150+150" in title:
-                limit_150 = is_unavailable
-            elif "250+250" in title:
-                limit_250 = is_unavailable
-            elif "500+500" in title:
-                limit_500 = is_unavailable
+        ig_name = "Unknown"
+        region = "Unknown"
+        last_login = "Unknown"
 
-        style_50 = "danger" if limit_50 else "success"
-        style_150 = "danger" if limit_150 else "success"
-        style_250 = "danger" if limit_250 else "success"
-        style_500 = "danger" if limit_500 else "success"
+        # Table Row တစ်ခုချင်းစီကို လှည့်ပတ်ဖတ်ပြီး Data ထုတ်ယူခြင်း
+        rows = table.find_all('tr')
+        for row in rows:
+            th = row.find('th')
+            td = row.find('td')
+            if th and td:
+                th_text = th.text.strip().lower()
+                if 'nickname' in th_text:
+                    ig_name = td.text.strip()
+                elif 'region id' in th_text:
+                    region = td.text.strip()
+                elif 'last login' in th_text:
+                    last_login = td.text.strip()
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Bᴏɴᴜs 50+50", callback_data="ignore", style=style_50),
-                InlineKeyboardButton(text="Bᴏɴᴜs 150+150", callback_data="ignore", style=style_150)
-            ],
-            [
-                InlineKeyboardButton(text="Bᴏɴᴜs 250+250", callback_data="ignore", style=style_250),
-                InlineKeyboardButton(text="Bᴏɴᴜs 500+500", callback_data="ignore", style=style_500)
-            ]
-        ])
-
+        # Keyboard များမပါဝင်တော့ဘဲ Report သီးသန့်ထုတ်ပေးမည်
         final_report = (
             f"<u><b>Mᴏʙɪʟᴇ Lᴇɢᴇɴᴅs Bᴀɴɢ Bᴀɴɢ</b></u>\n\n"
             f"🆔 <code>{'User ID' :<9}:</code> <code>{game_id}</code> (<code>{zone_id}</code>)\n"
             f"👤 <code>{'Nickname':<9}:</code> {ig_name}\n"
-            f"🌍 <code>{'Region'  :<9}:</code> {final_region}\n"
-            f"────────────────\n\n"
-            f"🎁 <b>Fɪʀsᴛ Rᴇᴄʜᴀʀɢᴇ Bᴏɴᴜs Sᴛᴀᴛᴜs</b>"
+            f"🌍 <code>{'Region'  :<9}:</code> {region}\n"
+            f"📍 <code>{'Login'   :<9}:</code> {last_login}\n"
+            f"────────────────"
         )
 
-        await loading_msg.edit_text(final_report, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-        
-    except Exception as e:
+        await loading_msg.edit_text(final_report, parse_mode=ParseMode.HTML)
+    except Exception as e: 
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
 
 
