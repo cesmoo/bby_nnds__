@@ -739,7 +739,7 @@ async def handle_check_role(message: types.Message):
 
     try:
         async with AsyncSession(impersonate="chrome124") as local_scraper:
-            res = await local_scraper.get(url, params=params, headers=headers, timeout=15)
+            res = await local_scraper.get(api_url, params=params, headers=headers, timeout=15)
         
         try:
             data = res.json()
