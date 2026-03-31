@@ -998,7 +998,6 @@ async def handle_check_role(message: types.Message):
     # ၂။ Malsawma Store API (Double Diamond Bonus စစ်ဆေးရန်)
     # ---------------------------------------------------------
     url_malsawma = 'https://www.malsawmastore.in/gadget/doublediamonds_action.php'
-    # PHP API အများစုသည် urlencoded form ကို အလွယ်တကူလက်ခံသဖြင့် payload အနေဖြင့်သာ တိုက်ရိုက်ပို့ပါမည်
     payload_malsawma = {
         'id': game_id,
         'zone': zone_id
@@ -1013,7 +1012,6 @@ async def handle_check_role(message: types.Message):
     try:
         # API နှစ်ခုလုံးကို တစ်ပြိုင်နက်တည်း (Concurrency) ဖြင့် အမြန်လှမ်းခေါ်မည်
         async with AsyncSession(impersonate="safari_ios") as local_scraper:
-            # PizzoShop ၏ Cloudflare ကျော်ရန် GET ကို အရင်လှမ်းခေါ်ပါမည်
             await local_scraper.get(url_pizzo, headers=headers_pizzo, timeout=15)
             
             res_pizzo, res_malsawma = await asyncio.gather(
@@ -1048,31 +1046,28 @@ async def handle_check_role(message: types.Message):
                 elif 'region id' in th_text: region = td.text.strip().replace(" (the)", "").replace(" (The)", "")
                 elif 'last login' in th_text: last_login = td.text.strip().replace(" (the)", "").replace(" (The)", "")
 
-
         # ==========================================
-        # (ခ) Malsawma မှ Double Diamond အချက်အလက်များကို ထုတ်ယူခြင်း
+        # (ခ) Malsawma မှ Double Diamond အချက်အလက်များကို ထုတ်ယူခြင်း (JSON အသစ်ပုံစံ)
         # ==========================================
+        # မူလသတ်မှတ်ချက်ကို True (Limit ပြည့်ပြီး / မရနိုင်တော့) ဟုထားမည်
         limit_50 = limit_150 = limit_250 = limit_500 = True 
         debug_bonus_error = ""
 
         try:
             data_double = res_malsawma.json()
-            bonus_list = data_double.get('rechargeBonus') or data_double.get('data', {}).get('rechargeBonus', [])
-            
-            # Bonus Data များကို လိုက်လံစစ်ဆေးခြင်း
-            for item in bonus_list:
-                title = str(item.get('title', '')).lower()
-                # 'Available' ဖြစ်မှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်မည်
-                is_unavailable = (str(item.get('status', '')).lower() != 'available')
+            if str(data_double.get('status', '')).lower() == 'true':
+                dd_data = data_double.get('dd', {})
                 
-                if "50+50" in title: limit_50 = is_unavailable
-                elif "150+150" in title: limit_150 = is_unavailable
-                elif "250+250" in title: limit_250 = is_unavailable
-                elif "500+500" in title: limit_500 = is_unavailable
-                
+                # JSON မှ True (ရနိုင်သည်) ဆိုလျှင် limit_xx ကို False (Limit မပြည့်သေး) ဟု ပြောင်းမည်။ 
+                # False ပြန်လာလျှင် True (Limit ပြည့်သွားပြီ) ဟု သတ်မှတ်မည်။
+                limit_50 = not dd_data.get('50', False)
+                limit_150 = not dd_data.get('150', False)
+                limit_250 = not dd_data.get('250', False)
+                limit_500 = not dd_data.get('500', False)
+            else:
+                debug_bonus_error = " <i>(Bonus Data Unavailable)</i>"
         except Exception as e:
-            # Malsawma ဘက်က Error တစ်ခုခုတက်နေပါက စာသားအသေးလေး ပြပေးထားမည်
-            debug_bonus_error = f" <i>(Bonus Data Unavailable)</i>"
+            debug_bonus_error = " <i>(Bonus Data Error)</i>"
 
         # ==========================================
         # (ဂ) Keyboard နှင့် Report ထုတ်ပေးခြင်း
@@ -1098,7 +1093,7 @@ async def handle_check_role(message: types.Message):
             f"🆔 <code>{'User ID' :<9}:</code> <code>{game_id}</code> (<code>{zone_id}</code>)\n"
             f"👤 <code>{'Nickname':<9}:</code> {ig_name}\n"
             f"🌍 <code>{'Region'  :<9}:</code> {region}\n"
-            f"📍 <code>{'Login'   :<9}:</code> {last_login}\n"
+           # f"📍 <code>{'Login'   :<9}:</code> {last_login}\n"
             f"────────────────\n\n"
             f"🎁 <b>Fɪʀsᴛ Rᴇᴄʜᴀʀɢᴇ Bᴏɴᴜs Sᴛᴀᴛᴜs</b>{debug_bonus_error}"
         )
