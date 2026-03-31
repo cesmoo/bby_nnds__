@@ -976,16 +976,17 @@ async def handle_check_role(message: types.Message):
     if not match: return await message.reply("❌ Invalid format. Use: `.role 12345678 1234`")
     
     game_id, zone_id = match.group(1).strip(), match.group(2).strip()
-    loading_msg = await message.reply("Checking account region...", parse_mode=ParseMode.HTML)
+    loading_msg = await message.reply("Checking account data...", parse_mode=ParseMode.HTML)
 
-    url = 'https://pizzoshop.com/mlchecker/check'
-    
-    payload = {
+    # ---------------------------------------------------------
+    # ၁။ PizzoShop API (Name, Region, Last Login စစ်ဆေးရန်)
+    # ---------------------------------------------------------
+    url_pizzo = 'https://pizzoshop.com/mlchecker/check'
+    payload_pizzo = {
         'user_id': game_id,
         'zone_id': zone_id
     }
-    
-    headers = {
+    headers_pizzo = {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
         'Content-Type': 'application/x-www-form-urlencoded',
         'Origin': 'https://pizzoshop.com',
@@ -993,47 +994,104 @@ async def handle_check_role(message: types.Message):
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     }
 
+    # ---------------------------------------------------------
+    # ၂။ Malsawma Store API (Double Diamond Bonus စစ်ဆေးရန်)
+    # ---------------------------------------------------------
+    url_malsawma = 'https://www.malsawmastore.in/gadget/doublediamonds_action.php'
+    # PHP API အများစုသည် urlencoded form ကို အလွယ်တကူလက်ခံသဖြင့် payload အနေဖြင့်သာ တိုက်ရိုက်ပို့ပါမည်
+    payload_malsawma = {
+        'id': game_id,
+        'zone': zone_id
+    }
+    headers_malsawma = {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Origin': 'https://www.malsawmastore.in',
+        'Referer': 'https://www.malsawmastore.in/gadget/doublediamonds',
+        'Accept': 'application/json, text/javascript, */*; q=0.01'
+    }
+
     try:
-        # ⚠️ အရေးကြီး: PizzoShop သို့ Request ပို့ရာတွင် GET ဖြင့် Cookie အရင်ယူမည်
+        # API နှစ်ခုလုံးကို တစ်ပြိုင်နက်တည်း (Concurrency) ဖြင့် အမြန်လှမ်းခေါ်မည်
         async with AsyncSession(impersonate="safari_ios") as local_scraper:
-            await local_scraper.get(url, headers=headers, timeout=15)
-            res = await local_scraper.post(url, data=payload, headers=headers, timeout=15)
+            # PizzoShop ၏ Cloudflare ကျော်ရန် GET ကို အရင်လှမ်းခေါ်ပါမည်
+            await local_scraper.get(url_pizzo, headers=headers_pizzo, timeout=15)
+            
+            res_pizzo, res_malsawma = await asyncio.gather(
+                local_scraper.post(url_pizzo, data=payload_pizzo, headers=headers_pizzo, timeout=15),
+                local_scraper.post(url_malsawma, data=payload_malsawma, headers=headers_malsawma, timeout=15)
+            )
         
-        # BeautifulSoup ဖြင့် HTML ဒေတာထုတ်ယူမည်
+        # ==========================================
+        # (က) PizzoShop မှ အချက်အလက်များကို ထုတ်ယူခြင်း
+        # ==========================================
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # HTML ထဲမှ table-modern ကို ရှာဖွေခြင်း
+        soup = BeautifulSoup(res_pizzo.text, 'html.parser')
         table = soup.find('table', class_='table-modern')
         
         if not table:
-             # Cloudflare က ပိတ်ထားတာလား စစ်ဆေးရန်
-             if "just a moment" in res.text.lower() or "cloudflare" in res.text.lower():
-                 return await loading_msg.edit_text("❌ **Security Block:** PizzoShop ၏ Cloudflare လုံခြုံရေးမှ ယာယီပိတ်ထားပါသည်။", parse_mode=ParseMode.HTML)
-             
-             # ဘာမှားနေလဲ တိတိကျကျ သိရအောင် PizzoShop မှ ပြန်ပို့သော စာသားကို ပြပေးမည်
-             debug_msg = res.text[:120].replace('<', '&lt;').replace('>', '&gt;').strip()
-             return await loading_msg.edit_text(f"❌ **Not Found or Error:**\n<code>{debug_msg}...</code>", parse_mode=ParseMode.HTML)
+             if "just a moment" in res_pizzo.text.lower() or "cloudflare" in res_pizzo.text.lower():
+                 return await loading_msg.edit_text("❌ **Security Block:** PizzoShop ၏ Cloudflare မှ ပိတ်ထားပါသည်။", parse_mode=ParseMode.HTML)
+             debug_msg = res_pizzo.text[:120].replace('<', '&lt;').replace('>', '&gt;').strip()
+             return await loading_msg.edit_text(f"❌ **Invalid Account or Error:**\n<code>{debug_msg}...</code>", parse_mode=ParseMode.HTML)
 
         ig_name = "Unknown"
         region = "Unknown"
         last_login = "Unknown"
 
-        # Table Row တစ်ခုချင်းစီကို ဖတ်ခြင်း
         rows = table.find_all('tr')
         for row in rows:
             th = row.find('th')
             td = row.find('td')
             if th and td:
                 th_text = th.text.strip().lower()
-                if 'nickname' in th_text:
-                    ig_name = td.text.strip()
-                elif 'region id' in th_text:
-                    # ဤနေရာတွင် (the) နှင့် (The) ကို ဖျောက်ရန် replace ထည့်ပါ
-                    region = td.text.strip().replace(" (the)", "").replace(" (The)", "")
-                elif 'last login' in th_text:
-                    # ဤနေရာတွင် (the) နှင့် (The) ကို ဖျောက်ရန် replace ထည့်ပါ
-                    last_login = td.text.strip().replace(" (the)", "").replace(" (The)", "")
+                if 'nickname' in th_text: ig_name = td.text.strip()
+                elif 'region id' in th_text: region = td.text.strip().replace(" (the)", "").replace(" (The)", "")
+                elif 'last login' in th_text: last_login = td.text.strip().replace(" (the)", "").replace(" (The)", "")
+
+
+        # ==========================================
+        # (ခ) Malsawma မှ Double Diamond အချက်အလက်များကို ထုတ်ယူခြင်း
+        # ==========================================
+        limit_50 = limit_150 = limit_250 = limit_500 = True 
+        debug_bonus_error = ""
+
+        try:
+            data_double = res_malsawma.json()
+            bonus_list = data_double.get('rechargeBonus') or data_double.get('data', {}).get('rechargeBonus', [])
+            
+            # Bonus Data များကို လိုက်လံစစ်ဆေးခြင်း
+            for item in bonus_list:
+                title = str(item.get('title', '')).lower()
+                # 'Available' ဖြစ်မှသာ မသုံးရသေးဘူးလို့ သတ်မှတ်မည်
+                is_unavailable = (str(item.get('status', '')).lower() != 'available')
+                
+                if "50+50" in title: limit_50 = is_unavailable
+                elif "150+150" in title: limit_150 = is_unavailable
+                elif "250+250" in title: limit_250 = is_unavailable
+                elif "500+500" in title: limit_500 = is_unavailable
+                
+        except Exception as e:
+            # Malsawma ဘက်က Error တစ်ခုခုတက်နေပါက စာသားအသေးလေး ပြပေးထားမည်
+            debug_bonus_error = f" <i>(Bonus Data Unavailable)</i>"
+
+        # ==========================================
+        # (ဂ) Keyboard နှင့် Report ထုတ်ပေးခြင်း
+        # ==========================================
+        style_50 = "danger" if limit_50 else "success"
+        style_150 = "danger" if limit_150 else "success"
+        style_250 = "danger" if limit_250 else "success"
+        style_500 = "danger" if limit_500 else "success"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Bᴏɴᴜs 50+50", callback_data="ignore", style=style_50),
+                InlineKeyboardButton(text="Bᴏɴᴜs 150+150", callback_data="ignore", style=style_150)
+            ],
+            [
+                InlineKeyboardButton(text="Bᴏɴᴜs 250+250", callback_data="ignore", style=style_250),
+                InlineKeyboardButton(text="Bᴏɴᴜs 500+500", callback_data="ignore", style=style_500)
+            ]
+        ])
 
         final_report = (
             f"<u><b>Mᴏʙɪʟᴇ Lᴇɢᴇɴᴅs Bᴀɴɢ Bᴀɴɢ</b></u>\n\n"
@@ -1041,10 +1099,11 @@ async def handle_check_role(message: types.Message):
             f"👤 <code>{'Nickname':<9}:</code> {ig_name}\n"
             f"🌍 <code>{'Region'  :<9}:</code> {region}\n"
             f"📍 <code>{'Login'   :<9}:</code> {last_login}\n"
-            f"────────────────"
+            f"────────────────\n\n"
+            f"🎁 <b>Fɪʀsᴛ Rᴇᴄʜᴀʀɢᴇ Bᴏɴᴜs Sᴛᴀᴛᴜs</b>{debug_bonus_error}"
         )
 
-        await loading_msg.edit_text(final_report, parse_mode=ParseMode.HTML)
+        await loading_msg.edit_text(final_report, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except Exception as e: 
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
 
