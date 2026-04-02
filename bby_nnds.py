@@ -339,13 +339,22 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             if not csrf_token: return {"status": "error", "message": "CSRF Token not found. Add a new Cookie using /setcookie.", "ig_name": ig_name}
             GLOBAL_CSRF[cache_key] = csrf_token
 
-        # 🛠 ပြင်ဆင်ထားသော MCC သီးသန့် Query နှင့် Checkrole (uid, sid ကို အသုံးပြုခြင်း)
+        # 🛠 ပြင်ဆင်ချက်: Smile.one ကို ရှုပ်မသွားစေရန် user_id/zone_id နှင့် uid/sid အားလုံးကို ထည့်ပေးလိုက်ပါသည်
         async def get_flow_id():
-            query_data = {'uid': game_id, 'sid': zone_id, 'pid': product_id, 'checkrole': '', 'pay_methond': 'smilecoin', 'channel_method': 'smilecoin', '_csrf': csrf_token}
+            query_data = {
+                'uid': game_id, 'sid': zone_id, 
+                'user_id': game_id, 'zone_id': zone_id, 
+                'pid': product_id, 'checkrole': '', 
+                'pay_methond': 'smilecoin', 'channel_method': 'smilecoin', '_csrf': csrf_token
+            }
             return await scraper.post(query_url, params={'product': 'magicchessgogo'}, data=query_data, headers=headers)
 
         async def check_role():
-            check_data = {'uid': game_id, 'sid': zone_id, 'checkrole': '1', '_csrf': csrf_token}
+            check_data = {
+                'uid': game_id, 'sid': zone_id, 
+                'user_id': game_id, 'zone_id': zone_id, 
+                'checkrole': '1', '_csrf': csrf_token
+            }
             return await scraper.post(checkrole_url, params={'product': 'magicchessgogo'}, data=check_data, headers=headers)
 
         if skip_role_check:
@@ -381,8 +390,15 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             error_display = str(real_error) if real_error else "Invalid account or unable to purchase."
             return {"status": "error", "message": error_display, "ig_name": ig_name}
 
-        # 🛠 ပြင်ဆင်ထားသော MCC Pay payload
-        pay_data = {'_csrf': csrf_token, 'uid': game_id, 'sid': zone_id, 'pay_methond': 'smilecoin', 'product_id': product_id, 'channel_method': 'smilecoin', 'flowid': flowid, 'email': '', 'coupon_id': ''}
+        # 🛠 ပြင်ဆင်ချက်: Pay လုပ်ရာတွင်လည်း parameters အစုံထည့်ပေးထားပါသည်
+        pay_data = {
+            '_csrf': csrf_token, 
+            'uid': game_id, 'sid': zone_id, 
+            'user_id': game_id, 'zone_id': zone_id, 
+            'pay_methond': 'smilecoin', 'product_id': product_id, 
+            'channel_method': 'smilecoin', 'flowid': flowid, 
+            'email': '', 'coupon_id': ''
+        }
         pay_response_raw = await scraper.post(pay_url, params={'product': 'magicchessgogo'}, data=pay_data, headers=headers)
         pay_text = pay_response_raw.text.lower()
         
@@ -415,7 +431,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
                 hist_json = hist_res_raw.json()
                 if 'list' in hist_json and len(hist_json['list']) > 0:
                     for order in hist_json['list']:
-                        # မှတ်ချက်: Order History တွင် Smile.one သည် user_id ဟုသာ ပြန်ပေးလေ့ရှိသည်
+                        # Smile.one History က user_id နဲ့ server_id လို့ပဲ ပြန်ပေးပါတယ်
                         if str(order.get('user_id')) == str(game_id) and str(order.get('server_id')) == str(zone_id):
                             current_order_id = str(order.get('increment_id', ""))
                             if current_order_id != last_success_order_id:
