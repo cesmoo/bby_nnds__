@@ -299,23 +299,24 @@ async def process_smile_one_order(game_id, zone_id, product_id, currency_name, p
     except Exception as e: 
         return {"status": "error", "message": f"System Error: {str(e)}", "ig_name": known_ig_name}
 
+
 async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_context=None, skip_role_check=False, known_ig_name="Unknown", last_success_order_id=""):
     scraper = await get_main_scraper()
     global GLOBAL_CSRF
     cache_key = f"mcc_{currency_name.lower()}"
 
-    # 🛠 ပြင်ဆင်ချက် ၁: query အစား createorder သို့ ပြောင်းလဲခြင်း
+    # 🛠 API Request အစစ်အတိုင်း URL များကို တိကျစွာ ပြင်ဆင်ထားပါသည်
     if currency_name == 'PH':
         main_url = 'https://www.smile.one/ph/merchant/game/magicchessgogo'
         checkrole_url = 'https://www.smile.one/ph/merchant/game/checkrole'
         query_url = 'https://www.smile.one/ph/merchant/game/createorder' 
-        pay_url = 'https://www.smile.one/ph/merchant/game/pay'
+        pay_url = 'https://www.smile.one/merchant/game/pay' # Pay သည် /ph/ မပါဘဲ အလုပ်လုပ်သည်
         order_api_url = 'https://www.smile.one/ph/customer/activationcode/codelist'
     else:
         main_url = 'https://www.smile.one/br/merchant/game/magicchessgogo'
         checkrole_url = 'https://www.smile.one/br/merchant/game/checkrole'
         query_url = 'https://www.smile.one/br/merchant/game/createorder' 
-        pay_url = 'https://www.smile.one/merchant/game/pay' # Pay သည် အများအားဖြင့် BR မပါဘဲ အလုပ်လုပ်သည်
+        pay_url = 'https://www.smile.one/merchant/game/pay'
         order_api_url = 'https://www.smile.one/br/customer/activationcode/codelist'
     
     headers = {
@@ -340,25 +341,23 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             if not csrf_token: return {"status": "error", "message": "CSRF Token not found. Add a new Cookie using /setcookie.", "ig_name": ig_name}
             GLOBAL_CSRF[cache_key] = csrf_token
 
-        # 🛠 ပြင်ဆင်ချက် ၂: createorder အတွက် API အတိအကျ payload (productid, external)
+        # 🛠 တကယ့် API Request အတိုင်း _csrf မထည့်ဘဲ ပို့ပါမည်
         async def get_flow_id():
             query_data = {
                 'uid': game_id,
                 'sid': zone_id,
                 'productid': product_id,
                 'channel_method': 'smilecoin',
-                'external': 'false',
-                '_csrf': csrf_token
+                'external': 'false'
             }
             return await scraper.post(query_url, params={'product': 'magicchessgogo'}, data=query_data, headers=headers)
 
-        # 🛠 ပြင်ဆင်ချက် ၃: checkrole အတွက် API အတိအကျ payload
+        # 🛠 checkrole တွင်လည်း တကယ့် API Request အတိုင်း _csrf မထည့်ပါ
         async def check_role():
             check_data = {
                 'uid': game_id,
                 'sid': zone_id,
-                'checkrole': '1',
-                '_csrf': csrf_token
+                'checkrole': '1'
             }
             return await scraper.post(checkrole_url, params={'product': 'magicchessgogo'}, data=check_data, headers=headers)
 
@@ -368,16 +367,16 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             query_response_raw, role_response_raw = await asyncio.gather(get_flow_id(), check_role())
             try:
                 role_result = role_response_raw.json()
-                fetched_name = role_result.get('username') or role_result.get('role_name') or role_result.get('data', {}).get('username')
+                fetched_name = role_result.get('role_name') or role_result.get('username') or role_result.get('data', {}).get('username') or role_result.get('data', {}).get('role_name')
                 if fetched_name and str(fetched_name).strip() != "":
                     ig_name = str(fetched_name).strip()
-                else:
-                    return {"status": "error", "message": "Account not found.", "ig_name": "Unknown"}
             except Exception: 
-                return {"status": "error", "message": "⚠️ Check Role API Error.", "ig_name": ig_name}
+                pass
 
-        try: query_result = query_response_raw.json()
-        except Exception: return {"status": "error", "message": "Query API Error", "ig_name": ig_name}
+        try: 
+            query_result = query_response_raw.json()
+        except Exception: 
+            return {"status": "error", "message": f"Query API Error: Failed to load JSON.", "ig_name": ig_name}
             
         flowid = query_result.get('flowid') or query_result.get('data', {}).get('flowid')
         
@@ -395,7 +394,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             error_display = str(real_error) if real_error else "Invalid account or unable to purchase."
             return {"status": "error", "message": error_display, "ig_name": ig_name}
 
-        # 🛠 ပြင်ဆင်ချက် ၄: Pay နှိပ်ရာတွင် API အတိအကျ payload 
+        # 🛠 Pay တွင်သာ _csrf ထည့်၍ API Request အတိအကျအတိုင်း ပို့ပါမည်
         pay_data = {
             '_csrf': csrf_token,
             'uid': game_id,
