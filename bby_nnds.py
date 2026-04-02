@@ -460,7 +460,16 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
         if is_success:
             return {"status": "success", "ig_name": ig_name, "order_id": real_order_id, "csrf_token": csrf_token, "product_name": actual_product_name}
         else:
-            error_detail = pay_json.get('msg') or pay_json.get('message') or pay_json.get('info') if 'pay_json' in locals() else "Payment Verification Failed."
+            # 🛠 Debug Mode: ဆာဗာက ငွေချေတာကို ဘာကြောင့် ငြင်းလဲဆိုတဲ့ အဖြေအစစ်ကို ထုတ်ကြည့်မည်
+            if 'pay_json' in locals() and isinstance(pay_json, dict):
+                error_detail = pay_json.get('msg') or pay_json.get('message') or pay_json.get('info')
+                if not error_detail:
+                    # msg မပါလာလျှင် ဆာဗာက ပြန်ပို့သမျှ Data အကုန်ထုတ်ပြမည်
+                    error_detail = f"API Reply: {pay_json}" 
+            else:
+                # JSON အဖြစ် မလာဘဲ HTML အဖြစ်လာလျှင်
+                error_detail = f"Raw Reply: {pay_text[:100]}..." 
+                
             return {"status": "error", "message": str(error_detail), "ig_name": ig_name}
 
     except Exception as e: 
