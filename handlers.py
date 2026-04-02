@@ -167,15 +167,19 @@ async def execute_buy_process(message, lines, regex_pattern, currency, packages_
                             
                             error_text_check = str(res.get('message', '')).lower()
                             
+                            
                             if res.get('status') == 'success' or "insufficient" in error_text_check or "invalid" in error_text_check or "not found" in error_text_check or "limit" in error_text_check or "exceed" in error_text_check or "máximo" in error_text_check:
                                 break
                                 
+                            
                             if attempt < max_retries - 1:
                                 if "erro no servidor" in error_text_check or "server error" in error_text_check or "cloudflare" in error_text_check or "query failed" in error_text_check:
+
                                     await asyncio.sleep(5.0)
                                 else:
+                                    
                                     await asyncio.sleep(2.0)
-                        
+                                
                         fetched_name = res.get('ig_name') or res.get('username') or res.get('role_name') or res.get('nickname')
                         if fetched_name and str(fetched_name).strip() not in ["", "Unknown", "None"]:
                             ig_name = str(fetched_name).strip()
