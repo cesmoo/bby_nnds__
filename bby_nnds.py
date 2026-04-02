@@ -339,13 +339,14 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             if not csrf_token: return {"status": "error", "message": "CSRF Token not found. Add a new Cookie using /setcookie.", "ig_name": ig_name}
             GLOBAL_CSRF[cache_key] = csrf_token
 
+        # 🛠 ပြင်ဆင်ထားသော MCC သီးသန့် Query နှင့် Checkrole (uid, sid ကို အသုံးပြုခြင်း)
         async def get_flow_id():
-            query_data = {'user_id': game_id, 'zone_id': zone_id, 'pid': product_id, 'checkrole': '', 'pay_methond': 'smilecoin', 'channel_method': 'smilecoin', '_csrf': csrf_token}
-            return await scraper.post(query_url, data=query_data, headers=headers)
+            query_data = {'uid': game_id, 'sid': zone_id, 'pid': product_id, 'checkrole': '', 'pay_methond': 'smilecoin', 'channel_method': 'smilecoin', '_csrf': csrf_token}
+            return await scraper.post(query_url, params={'product': 'magicchessgogo'}, data=query_data, headers=headers)
 
         async def check_role():
-            check_data = {'user_id': game_id, 'zone_id': zone_id, '_csrf': csrf_token}
-            return await scraper.post(checkrole_url, data=check_data, headers=headers)
+            check_data = {'uid': game_id, 'sid': zone_id, 'checkrole': '1', '_csrf': csrf_token}
+            return await scraper.post(checkrole_url, params={'product': 'magicchessgogo'}, data=check_data, headers=headers)
 
         if skip_role_check:
             query_response_raw = await get_flow_id()
@@ -353,7 +354,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             query_response_raw, role_response_raw = await asyncio.gather(get_flow_id(), check_role())
             try:
                 role_result = role_response_raw.json()
-                fetched_name = role_result.get('username') or role_result.get('data', {}).get('username')
+                fetched_name = role_result.get('username') or role_result.get('role_name') or role_result.get('data', {}).get('username')
                 if fetched_name and str(fetched_name).strip() != "":
                     ig_name = str(fetched_name).strip()
                 else:
@@ -380,8 +381,9 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             error_display = str(real_error) if real_error else "Invalid account or unable to purchase."
             return {"status": "error", "message": error_display, "ig_name": ig_name}
 
-        pay_data = {'_csrf': csrf_token, 'user_id': game_id, 'zone_id': zone_id, 'pay_methond': 'smilecoin', 'product_id': product_id, 'channel_method': 'smilecoin', 'flowid': flowid, 'email': '', 'coupon_id': ''}
-        pay_response_raw = await scraper.post(pay_url, data=pay_data, headers=headers)
+        # 🛠 ပြင်ဆင်ထားသော MCC Pay payload
+        pay_data = {'_csrf': csrf_token, 'uid': game_id, 'sid': zone_id, 'pay_methond': 'smilecoin', 'product_id': product_id, 'channel_method': 'smilecoin', 'flowid': flowid, 'email': '', 'coupon_id': ''}
+        pay_response_raw = await scraper.post(pay_url, params={'product': 'magicchessgogo'}, data=pay_data, headers=headers)
         pay_text = pay_response_raw.text.lower()
         
         if "saldo insuficiente" in pay_text or "insufficient" in pay_text:
@@ -413,6 +415,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
                 hist_json = hist_res_raw.json()
                 if 'list' in hist_json and len(hist_json['list']) > 0:
                     for order in hist_json['list']:
+                        # မှတ်ချက်: Order History တွင် Smile.one သည် user_id ဟုသာ ပြန်ပေးလေ့ရှိသည်
                         if str(order.get('user_id')) == str(game_id) and str(order.get('server_id')) == str(zone_id):
                             current_order_id = str(order.get('increment_id', ""))
                             if current_order_id != last_success_order_id:
