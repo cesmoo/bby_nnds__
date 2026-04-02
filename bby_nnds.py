@@ -305,7 +305,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
     global GLOBAL_CSRF
     cache_key = f"mcc_{currency_name.lower()}"
 
-    # 🛠 URL များကို API Request အစစ်အတိုင်း တိကျစွာ ပြင်ဆင်ထားပါသည်
+
     if currency_name == 'PH':
         main_url = 'https://www.smile.one/ph/merchant/game/magicchessgogo'
         checkrole_url = 'https://www.smile.one/ph/merchant/game/checkrole'
@@ -319,7 +319,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
         pay_url = 'https://www.smile.one/merchant/game/pay'
         order_api_url = 'https://www.smile.one/br/customer/activationcode/codelist'
     
-    # 🛠 Accept နှင့် Content-Type ကို မဖြစ်မနေ ထည့်သွင်းထားပါသည်
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -350,8 +350,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
                 'sid': zone_id,
                 'productid': product_id,
                 'channel_method': 'smilecoin',
-                'external': 'false',
-                '_csrf': csrf_token
+                'external': 'false'
             }
             return await scraper.post(query_url, params={'product': 'magicchessgogo'}, data=query_data, headers=headers)
 
@@ -359,9 +358,7 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             check_data = {
                 'uid': game_id,
                 'sid': zone_id,
-                'checkrole': '1',
-                'product': 'magicchessgogo',
-                '_csrf': csrf_token
+                'checkrole': '1'
             }
             return await scraper.post(checkrole_url, params={'product': 'magicchessgogo'}, data=check_data, headers=headers)
 
@@ -370,21 +367,17 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
         else:
             query_response_raw, role_response_raw = await asyncio.gather(get_flow_id(), check_role())
             
-            # 🛠 Debug Mode: နာမည်ရှာမတွေ့ပါက ဆာဗာ၏ အဖြေအစစ်ကို IG Name နေရာတွင် ပြပါမည်
             try:
-                role_text = role_response_raw.text
-                try:
-                    role_result = role_response_raw.json()
-                    fetched_name = role_result.get('username') or role_result.get('role_name') or role_result.get('data', {}).get('username')
-                    
-                    if fetched_name and str(fetched_name).strip() != "":
-                        ig_name = str(fetched_name).strip()
-                    else:
-                        ig_name = f"[NoName] {role_text[:30]}" 
-                except:
-                    ig_name = f"[NotJSON] {role_text[:30]}"
-            except Exception as e: 
-                ig_name = "Parse Error"
+                role_result = role_response_raw.json()
+                
+                fetched_name = role_result.get('nickname') or role_result.get('username') or role_result.get('role_name') or role_result.get('data', {}).get('nickname') or role_result.get('data', {}).get('username')
+                
+                if fetched_name and str(fetched_name).strip() != "":
+                    ig_name = str(fetched_name).strip()
+                else:
+                    ig_name = "Unknown" 
+            except Exception: 
+                ig_name = "Unknown"
 
         try: 
             query_result = query_response_raw.json()
