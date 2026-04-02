@@ -319,8 +319,11 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
         pay_url = 'https://www.smile.one/merchant/game/pay'
         order_api_url = 'https://www.smile.one/br/customer/activationcode/codelist'
     
+    # 🛠 ပြင်ဆင်ချက် ၁: Accept နှင့် Content-Type များကို မဖြစ်မနေ ပြန်ထည့်ပါမည်
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest', 
         'Referer': main_url, 
         'Origin': 'https://www.smile.one'
@@ -341,7 +344,6 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             if not csrf_token: return {"status": "error", "message": "CSRF Token not found. Add a new Cookie using /setcookie.", "ig_name": ig_name}
             GLOBAL_CSRF[cache_key] = csrf_token
 
-        # 🛠 တကယ့် API Request အတိုင်း _csrf မထည့်ဘဲ ပို့ပါမည်
         async def get_flow_id():
             query_data = {
                 'uid': game_id,
@@ -352,7 +354,6 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             }
             return await scraper.post(query_url, params={'product': 'magicchessgogo'}, data=query_data, headers=headers)
 
-        # 🛠 checkrole တွင်လည်း တကယ့် API Request အတိုင်း _csrf မထည့်ပါ
         async def check_role():
             check_data = {
                 'uid': game_id,
@@ -365,11 +366,14 @@ async def process_mcc_order(game_id, zone_id, product_id, currency_name, prev_co
             query_response_raw = await get_flow_id()
         else:
             query_response_raw, role_response_raw = await asyncio.gather(get_flow_id(), check_role())
+            # 🛠 ပြင်ဆင်ချက် ၂: နာမည်ထုတ်ယူသည့်အပိုင်းကို ပိုမိုတိကျအောင် ပြင်ဆင်ထားပါသည်
             try:
                 role_result = role_response_raw.json()
-                fetched_name = role_result.get('role_name') or role_result.get('username') or role_result.get('data', {}).get('username') or role_result.get('data', {}).get('role_name')
-                if fetched_name and str(fetched_name).strip() != "":
-                    ig_name = str(fetched_name).strip()
+                # Smile.one ၏ code 200 (အောင်မြင်သည်) ဖြစ်မှသာ နာမည်ကို ယူပါမည်
+                if str(role_result.get('code')) == '200' or str(role_result.get('status')) in ['1', '200', 'success']:
+                    fetched_name = role_result.get('username') or role_result.get('role_name') or role_result.get('data', {}).get('username') or role_result.get('data', {}).get('role_name')
+                    if fetched_name and str(fetched_name).strip() != "":
+                        ig_name = str(fetched_name).strip()
             except Exception: 
                 pass
 
