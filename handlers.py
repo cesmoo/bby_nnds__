@@ -24,18 +24,19 @@ from helpers import is_authorized, notify_owner, generate_list
 import bby_nnds
 
 
+
 @dp.message(Command("allorder", prefix="."))
 async def fetch_all_orders_today(message: types.Message):
     
-    loading_msg = await message.reply("🔄 ယနေ့ နှင့် မနေ့က (၂) ရက်စာ Order စာရင်းများကို ဆွဲထုတ်နေပါသည်...\n*(PH နှင့် BR Region နှစ်ခုလုံးတွင် ရှာဖွေနေသဖြင့် အနည်းငယ် စောင့်ပေးပါရှင့် ⏳)*")
+    loading_msg = await message.reply("🔄 Smile.one Website မှ တိုက်ရိုက် Order စာရင်းများကို ဆွဲထုတ်နေပါသည်...\n*(ပုံပါအတိုင်း Website ၏ HTML ကို တိုက်ရိုက်ဖတ်နေသဖြင့် အနည်းငယ် စောင့်ပေးပါရှင့် ⏳)*")
     
     try:
         scraper = await get_main_scraper()
         
+        # 🌟 ပြင်ဆင်ချက် ၁: API အစား Website စာမျက်နှာအစစ်ကို တောင်းဆိုပါမည်
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'X-Requested-With': 'XMLHttpRequest'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9',
         }
         
         today = datetime.datetime.now()
@@ -44,65 +45,102 @@ async def fetch_all_orders_today(message: types.Message):
         target_dates = (today.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d"))
         target_orders = []
         
-        # 🌟 ပြင်ဆင်ချက် ၁: Region အလိုက် History ကို အကုန်လိုက်ဆွဲပါမည်
         regions = ['/ph', '/br']
         
         for region in regions:
-            headers['Referer'] = f'https://www.smile.one{region}/customer/order'
             page = 1
             is_fetching = True
             
             while is_fetching:
-                # Region အလိုက် URL ပြောင်းလဲခြင်း
-                url = f'https://www.smile.one{region}/customer/activationcode/codelist'
-                params = {'type': 'orderlist', 'p': str(page), 'pageSize': '20'}
+                # 🌟 ပြင်ဆင်ချက် ၂: /customer/order ပင်မစာမျက်နှာကို တိုက်ရိုက်ဖတ်ပါမည်
+                url = f'https://www.smile.one{region}/customer/order'
+                params = {'p': str(page)}
                 
                 res = await scraper.get(url, params=params, headers=headers)
-                try:
-                    data = res.json()
-                except:
-                    break # JSON မဟုတ်ပါက Error တက်နေသဖြင့် ရပ်ပါမည်
-                    
-                order_list = data.get('list', [])
+                soup = BeautifulSoup(res.text, 'html.parser')
                 
-                if not order_list:
-                    break
+                # HTML ထဲမှ စာသားများကို သပ်သပ်ရပ်ရပ် ခွဲထုတ်ခြင်း (ပုံပါအတိုင်း လိုက်ဖတ်နိုင်ရန်)
+                lines = [line.strip() for line in soup.get_text(separator='\n').split('\n') if line.strip()]
+                
+                current_page_orders = []
+                current_order = None
+                
+                for i, line in enumerate(lines):
+                    # "S" ဖြင့်စသော Order ID များကို ရှာဖွေခြင်း (ဥပမာ - S260226060653351JBUK)
+                    match_id = re.search(r'(S\d{14,}[A-Z0-9]*)', line)
+                    if match_id and len(line) < 40:
+                        if current_order:
+                            current_page_orders.append(current_order)
+                        current_order = {
+                            'order_id': match_id.group(1), 
+                            'region': "PH" if region == "/ph" else "BR",
+                            'status': 'Pending/Unknown', 
+                            'uid': 'N/A', 
+                            'sid': 'N/A', 
+                            'price': '0', 
+                            'time': 'N/A', 
+                            'product': 'Unknown Item'
+                        }
+                        continue
+                        
+                    if current_order:
+                        lower_line = line.lower()
+                        # Status ရှာရန်
+                        if lower_line in ['sucesso', 'success', 'completed']:
+                            current_order['status'] = 'Success'
+                        elif lower_line in ['failed', 'falha', 'falhou', 'cancelled', 'cancelado', 'fechado', 'closed']:
+                            current_order['status'] = 'Failed'
+                        # အချိန် ရှာရန်
+                        elif re.match(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$', line):
+                            current_order['time'] = line
+                        # Game ID ရှာရန်
+                        elif lower_line == 'uid/email' or lower_line == 'uid':
+                            if i + 1 < len(lines): current_order['uid'] = lines[i+1]
+                        # Server ID ရှာရန်
+                        elif 'servidor' in lower_line or 'server' in lower_line:
+                            if i + 1 < len(lines): current_order['sid'] = lines[i+1]
+                        # စျေးနှုန်း ရှာရန်
+                        elif lower_line == 'value' or lower_line == 'valor':
+                            if i + 1 < len(lines): current_order['price'] = lines[i+1]
+                        elif re.match(r'^(BRL|PHP|\$)\s*\d+(\.\d+)?.*', line, re.I):
+                            # Discount ပြထားလျှင် ပထမစျေးကိုသာ ယူမည်
+                            current_order['price'] = line.split()[0] + ' ' + line.split()[1] if len(line.split()) > 1 else line
+                        # ပစ္စည်းအမည် ရှာရန်
+                        elif 'mobile legends' in lower_line or 'magic chess' in lower_line or 'passe' in lower_line or 'diamonds' in lower_line or 'diamante' in lower_line or 'weekly' in lower_line:
+                            current_order['product'] = line
+                            
+                if current_order:
+                    current_page_orders.append(current_order)
+                    
+                if not current_page_orders:
+                    break # စာမျက်နှာလွတ်သွားပါက ရပ်မည်
                     
                 has_older_orders = False
                 
-                for order in order_list:
-                    raw_time = order.get('create_time', '')
-                    
-                    # 🌟 ပြင်ဆင်ချက် ၂: အချိန်ကို တိကျစွာ ပြောင်းလဲစစ်ဆေးခြင်း
-                    if isinstance(raw_time, int) or (isinstance(raw_time, str) and raw_time.isdigit()):
-                        dt = datetime.datetime.fromtimestamp(int(raw_time))
-                        date_str = dt.strftime("%Y-%m-%d")
-                        display_time = dt.strftime("%Y-%m-%d %I:%M:%S %p")
-                    else:
-                        date_str = str(raw_time)[:10]
-                        display_time = str(raw_time)
+                for o in current_page_orders:
+                    o_time = o['time']
+                    if o_time == 'N/A': continue
                         
-                    # ဖိုင်ထဲတွင် ပြရန် အလွယ်တကူ သိမ်းထားခြင်း
-                    order['display_time'] = display_time
-                    order['region_mark'] = "PH" if region == "/ph" else "BR"
-                    
+                    date_str = o_time[:10]
+                    # ယနေ့ သို့မဟုတ် မနေ့က ဖြစ်လျှင်
                     if date_str in target_dates:
-                        target_orders.append(order)
-                    else:
+                        target_orders.append(o)
+                    elif date_str < target_dates[1]:
+                        # ၂ ရက်ထက် ဟောင်းသွားလျှင် ရပ်မည်
                         has_older_orders = True
-                
+                        
                 if has_older_orders:
                     break
                     
                 page += 1
-                await asyncio.sleep(6) # 6 စက္ကန့် ခြားပါမည်
+                await asyncio.sleep(6) # Cookie မသေစေရန်
                 
     except Exception as e:
         await loading_msg.edit_text(f"❌ စာရင်းဆွဲထုတ်ရာတွင် Error ဖြစ်ပေါ်ခဲ့ပါသည်: {e}")
         return
         
     if not target_orders:
-        await loading_msg.edit_text(f"⚠️ {target_dates[1]} မှ {target_dates[0]} အတွင်း Order စာရင်း မတွေ့ရှိပါရှင့်။ (Region အားလုံး ရှာဖွေပြီးပါပြီ)")
+        await loading_msg.edit_text(f"⚠️ {target_dates[1]} မှ {target_dates[0]} အတွင်း Order စာရင်း မတွေ့ရှိပါရှင့်။ (Website မှ တိုက်ရိုက် ရှာဖွေပြီးပါပြီ)")
         return
         
     # .txt ဖိုင်အတွက် စာသားများ စီစဉ်ခြင်း
@@ -115,29 +153,28 @@ async def fetch_all_orders_today(message: types.Message):
     failed_count = 0
     
     for idx, o in enumerate(target_orders, 1):
-        o_id = o.get('increment_id', 'N/A')
-        
-        # 🌟 ပြင်ဆင်ချက် ၃: MLBB နှင့် MCC နှစ်မျိုးလုံးအတွက် အဆင်ပြေအောင် ချိန်ညှိခြင်း
-        g_id = o.get('user_id') or o.get('uid') or 'N/A'
-        z_id = o.get('server_id') or o.get('sid') or o.get('zone_id') or 'N/A'
-        
-        p_name = o.get('product_name', 'N/A')
+        o_id = o.get('order_id', 'N/A')
+        uid = o.get('uid', 'N/A')
+        sid = o.get('sid', 'N/A')
+        p_name = o.get('product', 'N/A')
         price = o.get('price', '0')
-        disp_time = o.get('display_time', '')
-        reg = o.get('region_mark', '')
+        disp_time = o.get('time', '')
+        reg = o.get('region', '')
         
-        is_success = str(o.get('order_status', '')).lower() in ['success', '1', 'completed'] or str(o.get('status')) == '1'
-        if is_success:
+        if o.get('status') == 'Success':
             status_str = "✅ Success"
             success_count += 1
-            try: total_spent += float(price)
+            try:
+                # ငွေကြေးသင်္ကေတများကို ဖယ်ထုတ်ပြီး ပေါင်းမည်
+                clean_price = re.sub(r'[^\d.]', '', price)
+                if clean_price: total_spent += float(clean_price)
             except: pass
         else:
             status_str = "❌ Failed/Pending"
             failed_count += 1
             
         txt_content += f"[{idx}] အချိန်: {disp_time} ({reg})\n"
-        txt_content += f"    Game ID: {g_id} ({z_id})\n"  # <--- ဒီနေရာတွင် Game ID ဟု ပြောင်းထားပါသည်
+        txt_content += f"    Game ID: {uid} ({sid})\n"
         txt_content += f"    ပစ္စည်း: {p_name} | စျေးနှုန်း: {price}\n"
         txt_content += f"    Status: {status_str} | OrderID: {o_id}\n"
         txt_content += "-" * 40 + "\n"
@@ -149,7 +186,7 @@ async def fetch_all_orders_today(message: types.Message):
     file_bytes = txt_content.encode('utf-8')
     document = BufferedInputFile(file_bytes, filename=f"Orders_{target_dates[1]}_to_{target_dates[0]}.txt")
     
-    caption = f"✅ **၂ ရက်စာ** Order စာရင်းများ ရပါပြီရှင့်။\n\n"
+    caption = f"✅ **Website မှ တိုက်ရိုက်** စာရင်းများ ရပါပြီရှင့်။\n\n"
     caption += f"📅 {target_dates[1]} မှ {target_dates[0]} ထိ\n"
     caption += f"📦 စုစုပေါင်း: {len(target_orders)} Orders\n"
     caption += f"💰 ကုန်ကျငွေ: {total_spent:.2f}"
