@@ -1273,24 +1273,27 @@ async def handle_check_role(message: types.Message):
 @dp.message(or_f(Command("checkcus"), Command("cus"), F.text.regexp(r"(?i)^\.(?:checkcus|cus)(?:$|\s+)")))
 async def check_official_customer(message: types.Message):
     tg_id = str(message.from_user.id)
-    is_owner = (message.from_user.id == OWNER_ID)
+    # OWNER_ID နှင့် db.get_reseller များကို သင့်မူလကုဒ်အတိုင်း ဆက်လက်အလုပ်လုပ်စေပါသည်
+    is_owner = (message.from_user.id == OWNER_ID) 
     user_data = await db.get_reseller(tg_id) 
     
     if not is_owner and not user_data:
         return await message.reply("❌ You are not authorized.")
         
+    # 🌟 Newlines သို့မဟုတ် Spaces ဖြင့် ခြားထားသော ID အားလုံးကို ဖြတ်ယူခြင်း
     parts = message.text.strip().split()
     if len(parts) < 2:
-        return await message.reply("⚠️ <b>Usage:</b> <code>.cus <Game_ID></code>", parse_mode=ParseMode.HTML)
+        return await message.reply("⚠️ <b>Usage:</b>\n<code>.cus 12345678</code>\nOr multiple IDs:\n<code>.cus 1234\n5678\n9101</code>", parse_mode=ParseMode.HTML)
         
-    search_query = parts[1]
-    # 🌟 အသိပေးစာတွင် ၅ စက္ကန့်စောင့်ရမည့်အကြောင်း ထည့်ရေးထားပါသည်
-    loading_msg = await message.reply(f"🔍 Deep Searching Official Records for: <code>{search_query}</code>...\n*(ဆာဗာလုံခြုံရေးအရ ၅ စက္ကန့်စီ ခြား၍ ရှာဖွေနေပါသည် ⏳)*", parse_mode=ParseMode.HTML)
+    # 🌟 ID များကို အကုန်ဆွဲထုတ်ပြီး Duplicate (ထပ်နေသော ID များ) ကို ဖယ်ရှားပါမည်
+    search_queries = list(dict.fromkeys(parts[1:]))
+    search_set = set(search_queries)
     
-    scraper = await get_main_scraper() # bby_nnds မှ ခေါ်ထားလျှင် bby_nnds.get_main_scraper() ဟု ပြန်ပြင်ပေးပါ
+    loading_msg = await message.reply(f"🔍 Deep Searching Official Records for <b>{len(search_queries)}</b> IDs...\n*(ဆာဗာလုံခြုံရေးအတွက် ၅ စက္ကန့်စီ ခြား၍ ရှာဖွေနေပါသည် ⏳)*", parse_mode=ParseMode.HTML)
+    
+    scraper = await get_main_scraper()
     headers = {'X-Requested-With': 'XMLHttpRequest', 'Origin': 'https://www.smile.one'}
     
-    # BR Region ကိုပါ ပိုမိုပြည့်စုံအောင် ထည့်ပေးထားပါသည်
     urls_to_check = [
         'https://www.smile.one/customer/activationcode/codelist', 
         'https://www.smile.one/ph/customer/activationcode/codelist',
@@ -1316,7 +1319,8 @@ async def check_official_customer(message: types.Message):
                             order_id = str(order.get('increment_id') or order.get('id') or '')
                             status_val = str(order.get('order_status', '') or order.get('status', '')).lower()
                             
-                            if (current_user_id == search_query or order_id == search_query) and status_val in ['success', '1']:
+                            # 🌟 ID အများကြီးထဲမှ တစ်ခုခုနှင့် ကိုက်ညီမှုရှိ/မရှိ တစ်ပြိုင်နက် စစ်ဆေးခြင်း
+                            if (current_user_id in search_set or order_id in search_set) and status_val in ['success', '1']:
                                 if order_id not in seen_ids:
                                     seen_ids.add(order_id)
                                     found_orders.append(order)
@@ -1328,81 +1332,91 @@ async def check_official_customer(message: types.Message):
                 # 🌟 ပြင်ဆင်ချက် ၁: API တစ်ခါခေါ်ပြီးတိုင်း ၅ စက္ကန့် တိတိ နားပါမည် (Cookie မသေစေရန်)
                 await asyncio.sleep(5)
                 
-        if not found_orders: 
-            return await loading_msg.edit_text(f"❌ No successful records found for: <code>{search_query}</code>", parse_mode=ParseMode.HTML)
-            
-        # 🌟 ပြင်ဆင်ချက် ၂: found_orders = found_orders[:1] ကို ဖြုတ်လိုက်ပါပြီ (အကုန်ပြနိုင်ရန်)
-        
-        report = f"🎉 <b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs ғᴏʀ <code>{search_query}</code></b>\n"
-        report += f"📦 Total Found: <b>{len(found_orders)}</b>\n\n"
-        
-        for idx, order in enumerate(found_orders, 1):
-            serial_id = str(order.get('increment_id') or order.get('id') or 'Unknown Serial')
-            date_str = str(order.get('created_at') or order.get('updated_at') or order.get('create_time') or '')
-            currency_sym = str(order.get('total_fee_currency') or '$')
-            
-            date_display = date_str
-            if date_str:
-                try:
-                    dt_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-                    mmt_dt = dt_obj + datetime.timedelta(hours=9, minutes=30)
-                    mm_time_str = mmt_dt.strftime("%I:%M:%S %p") 
-                    date_display = f"{date_str} ( MM - {mm_time_str} )"
-                except Exception:
-                    date_display = date_str
-
-            raw_item_name = str(order.get('product_name') or order.get('goods_name') or order.get('title') or 'Unknown Item')
-            raw_item_name = raw_item_name.replace("Mobile Legends BR - ", "").replace("Mobile Legends - ", "").strip()
-            
-            translations = {
-                "Passe Semanal de Diamante": "Weekly Diamond Pass",
-                "Passagem do crepúsculo": "Twilight Pass",
-                "Passe Crepúsculo": "Twilight Pass",
-                "Pacote Semanal Elite": "Elite Weekly Bundle",
-                "Pacote Mensal Épico": "Epic Monthly Bundle",
-                "Membro Estrela Plus": "Starlight Member Plus",
-                "Membro Estrela": "Starlight Member",
-                "Diamantes": "Diamonds",
-                "Diamante": "Diamond",
-                "Bônus": "Bonus",
-                "Pacote": "Bundle"
-            }
-            
-            for pt, en in translations.items():
-                if pt in raw_item_name:
-                    raw_item_name = raw_item_name.replace(pt, en)
-                    
-            if raw_item_name.endswith(" c") or raw_item_name.endswith(" ("):
-                raw_item_name = raw_item_name[:-2]
-                
-            raw_item_name = raw_item_name.strip()
-            final_item_name = f"{raw_item_name}"
-            
-            price = str(order.get('price') or order.get('grand_total') or order.get('real_money') or '0.00')
-            if currency_sym != '$':
-                price_display = f"{price} {currency_sym}"
-            else:
-                price_display = f"${price}"
-                
-            report += f"[{idx}] 🏷 <code>{serial_id}</code>\n📅 <code>{date_display}</code>\n💎 {final_item_name} ({price_display})\n📊 Status: ✅ Success\n\n"
-            
-        # 🌟 ပြင်ဆင်ချက် ၃: Telegram Limit အရမ်းများသွားလျှင် File ဖြင့် အလိုအလျောက် ပို့ပေးမည်
-        if len(report) > 4000:
-            clean_text = report.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '')
-            file_bytes = clean_text.encode('utf-8')
-            document = BufferedInputFile(file_bytes, filename=f"Records_{search_query}.txt")
-            
-            await loading_msg.delete()
-            await message.reply_document(
-                document=document, 
-                caption=f"🎉 <b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs ғᴏʀ <code>{search_query}</code></b>\n📦 Total Orders: <b>{len(found_orders)}</b>\n\n*(အော်ဒါစာရင်းများလွန်းသဖြင့် ဖိုင်ဖြင့် ပို့ပေးလိုက်ပါသည်)*",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await loading_msg.edit_text(report, parse_mode=ParseMode.HTML)
-            
     except Exception as e: 
-        await loading_msg.edit_text(f"❌ Search Error: {str(e)}", parse_mode=ParseMode.HTML)
+        return await loading_msg.edit_text(f"❌ Search Error: {str(e)}", parse_mode=ParseMode.HTML)
+        
+    # 🌟 ပြင်ဆင်ချက် ၂: ရရှိလာသော အော်ဒါများကို .txt File ဖြင့် သပ်သပ်ရပ်ရပ် စီစဉ်ခြင်း
+    txt_content = f"===== OFFICIAL RECORDS SEARCH =====\n"
+    txt_content += f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %I:%M %p')}\n"
+    txt_content += f"Total IDs Searched: {len(search_queries)}\n"
+    txt_content += f"Total Records Found: {len(found_orders)}\n"
+    txt_content += "=" * 50 + "\n\n"
+    
+    for query in search_queries:
+        txt_content += f"🔍 Search ID: {query}\n"
+        
+        # ဤ ID နှင့် သက်ဆိုင်သော အော်ဒါများကိုသာ စစ်ထုတ်ခြင်း
+        orders_for_query = [
+            o for o in found_orders 
+            if str(o.get('user_id') or o.get('role_id') or '') == query or 
+               str(o.get('increment_id') or o.get('id') or '') == query
+        ]
+        
+        if not orders_for_query:
+            txt_content += "   ❌ No successful records found.\n"
+        else:
+            txt_content += f"   ✅ Found {len(orders_for_query)} record(s):\n"
+            for idx, order in enumerate(orders_for_query, 1):
+                serial_id = str(order.get('increment_id') or order.get('id') or 'Unknown')
+                date_str = str(order.get('created_at') or order.get('updated_at') or order.get('create_time') or '')
+                currency_sym = str(order.get('total_fee_currency') or '$')
+                
+                date_display = date_str
+                if date_str:
+                    try:
+                        dt_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                        mmt_dt = dt_obj + datetime.timedelta(hours=9, minutes=30)
+                        mm_time_str = mmt_dt.strftime("%I:%M:%S %p") 
+                        date_display = f"{date_str} (MM - {mm_time_str})"
+                    except:
+                        pass
+
+                raw_item_name = str(order.get('product_name') or order.get('goods_name') or order.get('title') or 'Unknown Item')
+                raw_item_name = raw_item_name.replace("Mobile Legends BR - ", "").replace("Mobile Legends - ", "").strip()
+                
+                translations = {
+                    "Passe Semanal de Diamante": "Weekly Diamond Pass",
+                    "Passagem do crepúsculo": "Twilight Pass",
+                    "Passe Crepúsculo": "Twilight Pass",
+                    "Pacote Semanal Elite": "Elite Weekly Bundle",
+                    "Pacote Mensal Épico": "Epic Monthly Bundle",
+                    "Membro Estrela Plus": "Starlight Member Plus",
+                    "Membro Estrela": "Starlight Member",
+                    "Diamantes": "Diamonds",
+                    "Diamante": "Diamond",
+                    "Bônus": "Bonus",
+                    "Pacote": "Bundle"
+                }
+                
+                for pt, en in translations.items():
+                    if pt in raw_item_name:
+                        raw_item_name = raw_item_name.replace(pt, en)
+                        
+                if raw_item_name.endswith(" c") or raw_item_name.endswith(" ("):
+                    raw_item_name = raw_item_name[:-2]
+                    
+                price = str(order.get('price') or order.get('grand_total') or order.get('real_money') or '0.00')
+                price_display = f"{price} {currency_sym}" if currency_sym != '$' else f"${price}"
+                
+                txt_content += f"      [{idx}] {date_display} | {raw_item_name.strip()} ({price_display}) | OrderID: {serial_id}\n"
+                
+        txt_content += "-" * 50 + "\n"
+        
+    # 🌟 .txt File အဖြစ် ပြောင်းလဲ၍ Telegram သို့ ပို့ဆောင်ခြင်း
+    file_bytes = txt_content.encode('utf-8')
+    document = BufferedInputFile(file_bytes, filename=f"Records_Check_{len(search_queries)}_IDs.txt")
+    
+    caption = f"🎉 <b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs Sᴇᴀʀᴄʜ Cᴏᴍᴘʟᴇᴛᴇᴅ</b>\n\n"
+    caption += f"🔍 IDs Checked: <b>{len(search_queries)}</b>\n"
+    caption += f"📦 Total Found: <b>{len(found_orders)}</b>\n\n"
+    caption += f"*(အသေးစိတ်ကို အောက်ပါ .txt ဖိုင်တွင် ဝင်ရောက်ကြည့်ရှုပါ)*"
+    
+    await loading_msg.delete()
+    await message.reply_document(
+        document=document, 
+        caption=caption,
+        parse_mode=ParseMode.HTML
+    )
 
 @dp.message(or_f(Command("topcus"), F.text.regexp(r"(?i)^\.topcus$")))
 async def show_top_customers(message: types.Message):
