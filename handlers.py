@@ -23,10 +23,11 @@ from packages import DOUBLE_DIAMOND_PACKAGES, BR_PACKAGES, PH_PACKAGES, MCC_PACK
 from helpers import is_authorized, notify_owner, generate_list
 import bby_nnds
 
+
 @dp.message(Command("allorder", prefix="."))
 async def fetch_all_orders_today(message: types.Message):
     
-    loading_msg = await message.reply("🔄 ယနေ့ နှင့် မနေ့က (၂) ရက်စာ Order စာရင်းများကို ဆွဲထုတ်နေပါသည်...\n*(Cookie မသေစေရန် 8 စက္ကန့်ခြားပြီး ဆွဲနေသဖြင့် အနည်းငယ် စောင့်ပေးပါရှင့် ⏳)*")
+    loading_msg = await message.reply("🔄 ယနေ့ နှင့် မနေ့က (၂) ရက်စာ Order စာရင်းများကို ဆွဲထုတ်နေပါသည်...\n*(PH နှင့် BR Region နှစ်ခုလုံးတွင် ရှာဖွေနေသဖြင့် အနည်းငယ် စောင့်ပေးပါရှင့် ⏳)*")
     
     try:
         scraper = await get_main_scraper()
@@ -34,66 +35,78 @@ async def fetch_all_orders_today(message: types.Message):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'X-Requested-With': 'XMLHttpRequest', 
-            'Referer': 'https://www.smile.one/customer/order'
+            'X-Requested-With': 'XMLHttpRequest'
         }
         
-        # 🌟 ပြင်ဆင်ချက်: ယနေ့ (Today) နှင့် မနေ့က (Yesterday) နေ့စွဲ ၂ ခုလုံးကို ယူပါမည်
         today = datetime.datetime.now()
         yesterday = today - datetime.timedelta(days=1)
         
-        today_str = today.strftime("%Y-%m-%d")
-        yesterday_str = yesterday.strftime("%Y-%m-%d")
-        
-        # စစ်ဆေးမည့် ရက်စွဲ ၂ ခု
-        target_dates = (today_str, yesterday_str)
-        
-        page = 1
+        target_dates = (today.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d"))
         target_orders = []
-        is_fetching = True
         
-        while is_fetching:
-            url = 'https://www.smile.one/customer/activationcode/codelist'
-            params = {'type': 'orderlist', 'p': str(page), 'pageSize': '20'}
+        # 🌟 ပြင်ဆင်ချက် ၁: Region အလိုက် History ကို အကုန်လိုက်ဆွဲပါမည်
+        regions = ['/ph', '/br']
+        
+        for region in regions:
+            headers['Referer'] = f'https://www.smile.one{region}/customer/order'
+            page = 1
+            is_fetching = True
             
-            res = await scraper.get(url, params=params, headers=headers)
-            data = res.json()
-            
-            order_list = data.get('list', [])
-            
-            if not order_list:
-                break
+            while is_fetching:
+                # Region အလိုက် URL ပြောင်းလဲခြင်း
+                url = f'https://www.smile.one{region}/customer/activationcode/codelist'
+                params = {'type': 'orderlist', 'p': str(page), 'pageSize': '20'}
                 
-            has_older_orders = False
-            
-            for order in order_list:
-                create_time = str(order.get('create_time', ''))
+                res = await scraper.get(url, params=params, headers=headers)
+                try:
+                    data = res.json()
+                except:
+                    break # JSON မဟုတ်ပါက Error တက်နေသဖြင့် ရပ်ပါမည်
+                    
+                order_list = data.get('list', [])
                 
-                # 🌟 ယနေ့ သို့မဟုတ် မနေ့က ဖြစ်လျှင် စာရင်းထဲသို့ ထည့်ပါမည်
-                if create_time.startswith(target_dates):
-                    target_orders.append(order)
-                else:
-                    # ၂ ရက်ထက် ပိုဟောင်းသောရက် (ဥပမာ- တန်ဖက်ခါ) ဆီရောက်သွားလျှင် ရပ်ပါမည်
-                    has_older_orders = True
-            
-            if has_older_orders:
-                break
+                if not order_list:
+                    break
+                    
+                has_older_orders = False
                 
-            page += 1
-            
-            # 🚨 8 စက္ကန့် နားပါမည် 🚨
-            await asyncio.sleep(8)
-            
+                for order in order_list:
+                    raw_time = order.get('create_time', '')
+                    
+                    # 🌟 ပြင်ဆင်ချက် ၂: အချိန်ကို တိကျစွာ ပြောင်းလဲစစ်ဆေးခြင်း
+                    if isinstance(raw_time, int) or (isinstance(raw_time, str) and raw_time.isdigit()):
+                        dt = datetime.datetime.fromtimestamp(int(raw_time))
+                        date_str = dt.strftime("%Y-%m-%d")
+                        display_time = dt.strftime("%Y-%m-%d %I:%M:%S %p")
+                    else:
+                        date_str = str(raw_time)[:10]
+                        display_time = str(raw_time)
+                        
+                    # ဖိုင်ထဲတွင် ပြရန် အလွယ်တကူ သိမ်းထားခြင်း
+                    order['display_time'] = display_time
+                    order['region_mark'] = "PH" if region == "/ph" else "BR"
+                    
+                    if date_str in target_dates:
+                        target_orders.append(order)
+                    else:
+                        has_older_orders = True
+                
+                if has_older_orders:
+                    break
+                    
+                page += 1
+                await asyncio.sleep(6) # 6 စက္ကန့် ခြားပါမည်
+                
     except Exception as e:
         await loading_msg.edit_text(f"❌ စာရင်းဆွဲထုတ်ရာတွင် Error ဖြစ်ပေါ်ခဲ့ပါသည်: {e}")
         return
         
     if not target_orders:
-        await loading_msg.edit_text(f"⚠️ {yesterday_str} မှ {today_str} အတွင်း Order စာရင်း မတွေ့ရှိပါရှင့်။")
+        await loading_msg.edit_text(f"⚠️ {target_dates[1]} မှ {target_dates[0]} အတွင်း Order စာရင်း မတွေ့ရှိပါရှင့်။ (Region အားလုံး ရှာဖွေပြီးပါပြီ)")
         return
         
     # .txt ဖိုင်အတွက် စာသားများ စီစဉ်ခြင်း
-    txt_content = f"===== ၂ ရက်စာ အော်ဒါစာရင်း ({yesterday_str} မှ {today_str} ထိ) =====\n"
+    txt_content = f"===== ၂ ရက်စာ အော်ဒါစာရင်း ({target_dates[1]} မှ {target_dates[0]} ထိ) =====\n"
     txt_content += f"စုစုပေါင်း အော်ဒါအရေအတွက် : {len(target_orders)}\n"
     txt_content += "=" * 50 + "\n\n"
     
@@ -103,13 +116,17 @@ async def fetch_all_orders_today(message: types.Message):
     
     for idx, o in enumerate(target_orders, 1):
         o_id = o.get('increment_id', 'N/A')
-        uid = o.get('user_id', 'N/A')
-        sid = o.get('server_id', 'N/A')
+        
+        # 🌟 ပြင်ဆင်ချက် ၃: MLBB နှင့် MCC နှစ်မျိုးလုံးအတွက် အဆင်ပြေအောင် ချိန်ညှိခြင်း
+        g_id = o.get('user_id') or o.get('uid') or 'N/A'
+        z_id = o.get('server_id') or o.get('sid') or o.get('zone_id') or 'N/A'
+        
         p_name = o.get('product_name', 'N/A')
         price = o.get('price', '0')
-        create_time = str(o.get('create_time', ''))
+        disp_time = o.get('display_time', '')
+        reg = o.get('region_mark', '')
         
-        is_success = str(o.get('order_status', '')).lower() in ['success', '1'] or str(o.get('status')) == '1'
+        is_success = str(o.get('order_status', '')).lower() in ['success', '1', 'completed'] or str(o.get('status')) == '1'
         if is_success:
             status_str = "✅ Success"
             success_count += 1
@@ -119,8 +136,8 @@ async def fetch_all_orders_today(message: types.Message):
             status_str = "❌ Failed/Pending"
             failed_count += 1
             
-        txt_content += f"[{idx}] အချိန်: {create_time}\n"
-        txt_content += f"    ID: {uid} ({sid})\n"
+        txt_content += f"[{idx}] အချိန်: {disp_time} ({reg})\n"
+        txt_content += f"    Game ID: {g_id} ({z_id})\n"  # <--- ဒီနေရာတွင် Game ID ဟု ပြောင်းထားပါသည်
         txt_content += f"    ပစ္စည်း: {p_name} | စျေးနှုန်း: {price}\n"
         txt_content += f"    Status: {status_str} | OrderID: {o_id}\n"
         txt_content += "-" * 40 + "\n"
@@ -129,12 +146,11 @@ async def fetch_all_orders_today(message: types.Message):
     txt_content += f"💰 စုစုပေါင်း ကုန်ကျငွေ: {total_spent:.2f}\n"
     txt_content += "=" * 50 + "\n"
     
-    # Aiogram 3 အတွက် ဖိုင်ဖန်တီးခြင်း
     file_bytes = txt_content.encode('utf-8')
-    document = BufferedInputFile(file_bytes, filename=f"Orders_{yesterday_str}_to_{today_str}.txt")
+    document = BufferedInputFile(file_bytes, filename=f"Orders_{target_dates[1]}_to_{target_dates[0]}.txt")
     
     caption = f"✅ **၂ ရက်စာ** Order စာရင်းများ ရပါပြီရှင့်။\n\n"
-    caption += f"📅 {yesterday_str} မှ {today_str} ထိ\n"
+    caption += f"📅 {target_dates[1]} မှ {target_dates[0]} ထိ\n"
     caption += f"📦 စုစုပေါင်း: {len(target_orders)} Orders\n"
     caption += f"💰 ကုန်ကျငွေ: {total_spent:.2f}"
     
