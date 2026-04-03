@@ -1270,7 +1270,6 @@ async def handle_check_role(message: types.Message):
         await loading_msg.edit_text(f"❌ System Error: {str(e)}", parse_mode=ParseMode.HTML)
 
 
-
 @dp.message(or_f(Command("checkcus"), Command("cus"), F.text.regexp(r"(?i)^\.(?:checkcus|cus)(?:$|\s+)")))
 async def check_official_customer(message: types.Message):
     tg_id = str(message.from_user.id)
@@ -1285,14 +1284,17 @@ async def check_official_customer(message: types.Message):
         return await message.reply("⚠️ <b>Usage:</b> <code>.cus <Game_ID></code>", parse_mode=ParseMode.HTML)
         
     search_query = parts[1]
-    loading_msg = await message.reply(f"Deep Searching Official Records for: <code>{search_query}</code>...", parse_mode=ParseMode.HTML)
+    # 🌟 အသိပေးစာတွင် ၅ စက္ကန့်စောင့်ရမည့်အကြောင်း ထည့်ရေးထားပါသည်
+    loading_msg = await message.reply(f"🔍 Deep Searching Official Records for: <code>{search_query}</code>...\n*(ဆာဗာလုံခြုံရေးအရ ၅ စက္ကန့်စီ ခြား၍ ရှာဖွေနေပါသည် ⏳)*", parse_mode=ParseMode.HTML)
     
-    scraper = await bby_nnds.get_main_scraper()
+    scraper = await get_main_scraper() # bby_nnds မှ ခေါ်ထားလျှင် bby_nnds.get_main_scraper() ဟု ပြန်ပြင်ပေးပါ
     headers = {'X-Requested-With': 'XMLHttpRequest', 'Origin': 'https://www.smile.one'}
     
+    # BR Region ကိုပါ ပိုမိုပြည့်စုံအောင် ထည့်ပေးထားပါသည်
     urls_to_check = [
         'https://www.smile.one/customer/activationcode/codelist', 
-        'https://www.smile.one/ph/customer/activationcode/codelist'
+        'https://www.smile.one/ph/customer/activationcode/codelist',
+        'https://www.smile.one/br/customer/activationcode/codelist'
     ]
     
     found_orders = []
@@ -1323,13 +1325,18 @@ async def check_official_customer(message: types.Message):
                 except: 
                     break
                 
+                # 🌟 ပြင်ဆင်ချက် ၁: API တစ်ခါခေါ်ပြီးတိုင်း ၅ စက္ကန့် တိတိ နားပါမည် (Cookie မသေစေရန်)
+                await asyncio.sleep(5)
+                
         if not found_orders: 
             return await loading_msg.edit_text(f"❌ No successful records found for: <code>{search_query}</code>", parse_mode=ParseMode.HTML)
             
-        found_orders = found_orders[:1] 
-        report = f"🎉<b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs ғᴏʀ {search_query}</b>\n\n"
+        # 🌟 ပြင်ဆင်ချက် ၂: found_orders = found_orders[:1] ကို ဖြုတ်လိုက်ပါပြီ (အကုန်ပြနိုင်ရန်)
         
-        for order in found_orders:
+        report = f"🎉 <b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs ғᴏʀ <code>{search_query}</code></b>\n"
+        report += f"📦 Total Found: <b>{len(found_orders)}</b>\n\n"
+        
+        for idx, order in enumerate(found_orders, 1):
             serial_id = str(order.get('increment_id') or order.get('id') or 'Unknown Serial')
             date_str = str(order.get('created_at') or order.get('updated_at') or order.get('create_time') or '')
             currency_sym = str(order.get('total_fee_currency') or '$')
@@ -1377,9 +1384,23 @@ async def check_official_customer(message: types.Message):
             else:
                 price_display = f"${price}"
                 
-            report += f"🏷 <code>{serial_id}</code>\n📅 <code>{date_display}</code>\n💎 {final_item_name} ({price_display})\n📊 Status: ✅ Success\n\n"
+            report += f"[{idx}] 🏷 <code>{serial_id}</code>\n📅 <code>{date_display}</code>\n💎 {final_item_name} ({price_display})\n📊 Status: ✅ Success\n\n"
             
-        await loading_msg.edit_text(report, parse_mode=ParseMode.HTML)
+        # 🌟 ပြင်ဆင်ချက် ၃: Telegram Limit အရမ်းများသွားလျှင် File ဖြင့် အလိုအလျောက် ပို့ပေးမည်
+        if len(report) > 4000:
+            clean_text = report.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '')
+            file_bytes = clean_text.encode('utf-8')
+            document = BufferedInputFile(file_bytes, filename=f"Records_{search_query}.txt")
+            
+            await loading_msg.delete()
+            await message.reply_document(
+                document=document, 
+                caption=f"🎉 <b>Oғғɪᴄɪᴀʟ Rᴇᴄᴏʀᴅs ғᴏʀ <code>{search_query}</code></b>\n📦 Total Orders: <b>{len(found_orders)}</b>\n\n*(အော်ဒါစာရင်းများလွန်းသဖြင့် ဖိုင်ဖြင့် ပို့ပေးလိုက်ပါသည်)*",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await loading_msg.edit_text(report, parse_mode=ParseMode.HTML)
+            
     except Exception as e: 
         await loading_msg.edit_text(f"❌ Search Error: {str(e)}", parse_mode=ParseMode.HTML)
 
