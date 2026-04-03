@@ -17,6 +17,7 @@ from curl_cffi.requests import AsyncSession
 
 import database as db
 import config
+from bby_nnds import get_main_scraper
 from config import dp, bot, OWNER_ID, MMT, user_locks, api_semaphore
 from packages import DOUBLE_DIAMOND_PACKAGES, BR_PACKAGES, PH_PACKAGES, MCC_PACKAGES, PH_MCC_PACKAGES
 from helpers import is_authorized, notify_owner, generate_list
